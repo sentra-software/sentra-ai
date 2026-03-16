@@ -7,7 +7,27 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.1" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.0" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.0" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.13.9" />
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sentra.Application\Sentra.Application.csproj" />
+    <ProjectReference Include="..\Sentra.Infrastructure\Sentra.Infrastructure.csproj" />
+    <ProjectReference Include="..\Sentra.Contracts\Sentra.Contracts.csproj" />
+    <ProjectReference Include="..\Sentra.AI.Orchestration\Sentra.AI.Orchestration.csproj" />
+    <ProjectReference Include="..\Sentra.Connectors.PostgreSql\Sentra.Connectors.PostgreSql.csproj" />
+    <ProjectReference Include="..\Sentra.Connectors.SqlServer\Sentra.Connectors.SqlServer.csproj" />
+    <ProjectReference Include="..\Sentra.Connectors.MySql\Sentra.Connectors.MySql.csproj" />
+    <ProjectReference Include="..\Sentra.Security\Sentra.Security.csproj" />
+    <ProjectReference Include="..\Sentra.Licensing\Sentra.Licensing.csproj" />
+    <ProjectReference Include="..\Sentra.Observability\Sentra.Observability.csproj" />
   </ItemGroup>
 
 </Project>

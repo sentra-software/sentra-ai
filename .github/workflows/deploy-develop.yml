@@ -31,8 +31,7 @@ jobs:
           script: |
             set -e
 
-            export CR_PAT='${{ secrets.GHCR_READ_TOKEN }}'
-            echo "$CR_PAT" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
 
             cd /opt/sentra/compose
             docker compose pull

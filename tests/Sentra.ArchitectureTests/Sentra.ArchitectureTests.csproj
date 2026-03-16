@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.2" />
+    <PackageReference Include="FluentAssertions" Version="8.8.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="NetArchTest.Rules" Version="1.3.2" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Sentra.Api\Sentra.Api.csproj" />
+    <ProjectReference Include="..\..\src\Sentra.Application\Sentra.Application.csproj" />
+    <ProjectReference Include="..\..\src\Sentra.Domain\Sentra.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Sentra.Infrastructure\Sentra.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Sentra.SharedKernel\Sentra.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\src\Sentra.Contracts\Sentra.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Sentra.Connectors.Abstractions\Sentra.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Sentra.Connectors.PostgreSql\Sentra.Connectors.PostgreSql.csproj" />
+    <ProjectReference Include="..\..\src\Sentra.AI.Abstractions\Sentra.AI.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Sentra.AI.Orchestration\Sentra.AI.Orchestration.csproj" />
+    <ProjectReference Include="..\..\src\Sentra.Security\Sentra.Security.csproj" />
+    <ProjectReference Include="..\..\src\Sentra.Licensing\Sentra.Licensing.csproj" />
+    <ProjectReference Include="..\..\src\Sentra.Observability\Sentra.Observability.csproj" />
+  </ItemGroup>
+
+</Project>
