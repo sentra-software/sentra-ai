@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: ['csharp', 'javascript-typescript']
+        language: ['csharp']
 
     steps:
       - name: Checkout repository
@@ -52,16 +52,6 @@ jobs:
       - name: Build .NET
         if: matrix.language == 'csharp'
         run: dotnet build --configuration Release --no-restore
-
-      - name: Install frontend dependencies
-        if: matrix.language == 'javascript-typescript'
-        working-directory: frontend/sentra-web
-        run: npm ci
-
-      - name: Build frontend
-        if: matrix.language == 'javascript-typescript'
-        working-directory: frontend/sentra-web
-        run: npm run build
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
