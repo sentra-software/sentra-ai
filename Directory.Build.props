@@ -6,7 +6,16 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <LangVersion>latest</LangVersion>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>${NoWarn};1591</NoWarn>
+    <RepositoryRoot>$(MSBuildThisFileDirectory)</RepositoryRoot>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Sentra.IntegrationTests'">
+    <BaseIntermediateOutputPath>$(RepositoryRoot)artifacts\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(RepositoryRoot)artifacts\obj\$(MSBuildProjectName)\</MSBuildProjectExtensionsPath>
+    <BaseOutputPath>$(RepositoryRoot)artifacts\bin\$(MSBuildProjectName)\</BaseOutputPath>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageVersion Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageVersion Include="DotNet.Testcontainers" Version="1.6.0" />
