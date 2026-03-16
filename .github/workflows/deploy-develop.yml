@@ -1,0 +1,40 @@
+name: Deploy Develop
+
+on:
+  workflow_run:
+    workflows: ["Docker Develop"]
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-develop
+  cancel-in-progress: true
+
+jobs:
+  deploy-dev:
+    name: deploy-dev
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_HOST }}
+          username: ${{ secrets.DEV_USERNAME }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          port: ${{ secrets.DEV_PORT }}
+          script: |
+            set -e
+
+            export CR_PAT='${{ secrets.GHCR_READ_TOKEN }}'
+            echo "$CR_PAT" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            cd /opt/sentra/compose
+            docker compose pull
+            docker compose up -d
+            docker image prune -af
