@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Sentra.SharedKernel\Sentra.SharedKernel.csproj" />
+    <ProjectReference Include="..\Sentra.Domain\Sentra.Domain.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
