@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\src\Sentra.Security\Sentra.Security.csproj" />
     <ProjectReference Include="..\..\src\Sentra.Licensing\Sentra.Licensing.csproj" />
     <ProjectReference Include="..\..\src\Sentra.AI.Orchestration\Sentra.AI.Orchestration.csproj" />
+    <ProjectReference Include="..\..\src\Sentra.Api./Sentra.Api.csproj" />
   </ItemGroup>
 
 </Project>
