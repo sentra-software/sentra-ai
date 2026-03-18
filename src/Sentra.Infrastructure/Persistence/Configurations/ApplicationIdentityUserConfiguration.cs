@@ -24,6 +24,9 @@ public sealed class ApplicationIdentityUserConfiguration : IEntityTypeConfigurat
         builder.Property(x => x.CreatedAtUtc)
             .IsRequired();
 
+        builder.Property(x => x.ActiveDataSourceId)
+            .IsRequired(false);
+
         builder.HasIndex(x => new { x.TenantId, x.DomainUserId })
             .IsUnique();
 

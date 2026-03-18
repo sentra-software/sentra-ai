@@ -28,6 +28,11 @@ public sealed class ApplicationIdentityUser : IdentityUser<Guid>
     public bool IsActive { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets the currently selected managed data source identifier.
+    /// </summary>
+    public Guid? ActiveDataSourceId { get; set; }
+
+    /// <summary>
     /// Gets or sets the UTC timestamp at which the account was created.
     /// </summary>
     public DateTime CreatedAtUtc { get; set; }

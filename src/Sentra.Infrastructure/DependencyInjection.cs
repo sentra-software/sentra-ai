@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Sentra.Application.Abstractions.Security;
 using Sentra.Infrastructure.Persistence;
+using Sentra.Infrastructure.Security;
 using Sentra.Security.Identity;
 
 namespace Sentra.Infrastructure;
@@ -47,6 +49,9 @@ public static class DependencyInjection
             })
             .AddRoles<ApplicationIdentityRole>()
             .AddEntityFrameworkStores<SentraPlatformDbContext>();
+
+        services.AddDataProtection();
+        services.AddScoped<IConnectionStringProtector, DataProtectionConnectionStringProtector>();
 
         return services;
     }
