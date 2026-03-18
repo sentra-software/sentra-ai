@@ -36,7 +36,8 @@ public sealed class DataSourceQueryServiceTests
             queryResult);
 
         ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        DataSourceQueryService? service = new DataSourceQueryService(registry);
+        TestQuerySafetyValidator? querySafetyValidator = new TestQuerySafetyValidator(Result.Success());
+        DataSourceQueryService? service = new DataSourceQueryService(registry, querySafetyValidator);
 
         Result<QueryExecutionResult>? result = await service.ExecuteQueryAsync(
             DataSourceType.PostgreSql,
@@ -48,6 +49,7 @@ public sealed class DataSourceQueryServiceTests
         result.ValueOrThrow().Columns.Should().ContainInOrder("id", "name");
         connector.LastConnectionString.Should().Be("Host=localhost;Database=sentra;");
         connector.LastQuery.Should().Be("select id, name from users;");
+        querySafetyValidator.LastQuery.Should().Be("select id, name from users;");
     }
 
     /// <summary>
@@ -66,7 +68,8 @@ public sealed class DataSourceQueryServiceTests
             queryResult);
 
         ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        DataSourceQueryService? service = new DataSourceQueryService(registry);
+        TestQuerySafetyValidator? querySafetyValidator = new TestQuerySafetyValidator(Result.Success());
+        DataSourceQueryService? service = new DataSourceQueryService(registry, querySafetyValidator);
 
         Result<QueryExecutionResult>? result = await service.ExecuteQueryAsync(
             DataSourceType.PostgreSql,
@@ -76,6 +79,7 @@ public sealed class DataSourceQueryServiceTests
         result.IsSuccess.Should().BeTrue();
         connector.LastConnectionString.Should().Be("Host=localhost;Database=sentra;");
         connector.LastQuery.Should().Be("select 1;");
+        querySafetyValidator.LastQuery.Should().Be("  select 1;  ");
     }
 
     /// <summary>
@@ -94,7 +98,8 @@ public sealed class DataSourceQueryServiceTests
             queryResult);
 
         ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        DataSourceQueryService? service = new DataSourceQueryService(registry);
+        TestQuerySafetyValidator? querySafetyValidator = new TestQuerySafetyValidator(Result.Success());
+        DataSourceQueryService? service = new DataSourceQueryService(registry, querySafetyValidator);
 
         Result<QueryExecutionResult>? result = await service.ExecuteQueryAsync(
             DataSourceType.PostgreSql,
@@ -106,10 +111,10 @@ public sealed class DataSourceQueryServiceTests
     }
 
     /// <summary>
-    /// Verifies that an empty query is rejected.
+    /// Verifies that a failed query safety validation is returned.
     /// </summary>
     [Fact]
-    public async Task ExecuteQueryAsync_Should_Return_Failure_When_Query_Is_Empty()
+    public async Task ExecuteQueryAsync_Should_Return_Failure_When_Query_Safety_Validation_Fails()
     {
         QueryExecutionResult? queryResult = new QueryExecutionResult(
             Array.Empty<string>(),
@@ -121,15 +126,22 @@ public sealed class DataSourceQueryServiceTests
             queryResult);
 
         ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        DataSourceQueryService? service = new DataSourceQueryService(registry);
+        TestQuerySafetyValidator? querySafetyValidator = new TestQuerySafetyValidator(
+            Result.Failure(
+                Error.Validation(
+                    "datasources.query.only_select_allowed",
+                    "Only SELECT queries are allowed.")));
+
+        DataSourceQueryService? service = new DataSourceQueryService(registry, querySafetyValidator);
 
         Result<QueryExecutionResult>? result = await service.ExecuteQueryAsync(
             DataSourceType.PostgreSql,
             "Host=localhost;",
-            " ");
+            "delete from \"Companies\";");
 
         result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("datasources.query.required");
+        result.Error.Code.Should().Be("datasources.query.only_select_allowed");
+        connector.LastQuery.Should().BeNull();
     }
 
     /// <summary>
@@ -148,7 +160,8 @@ public sealed class DataSourceQueryServiceTests
             queryResult);
 
         ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        DataSourceQueryService? service = new DataSourceQueryService(registry);
+        TestQuerySafetyValidator? querySafetyValidator = new TestQuerySafetyValidator(Result.Success());
+        DataSourceQueryService? service = new DataSourceQueryService(registry, querySafetyValidator);
 
         Result<QueryExecutionResult>? result = await service.ExecuteQueryAsync(
             (DataSourceType)999,
@@ -177,7 +190,8 @@ public sealed class DataSourceQueryServiceTests
                 queryResult)
         ]);
 
-        DataSourceQueryService? service = new DataSourceQueryService(registry);
+        TestQuerySafetyValidator? querySafetyValidator = new TestQuerySafetyValidator(Result.Success());
+        DataSourceQueryService? service = new DataSourceQueryService(registry, querySafetyValidator);
 
         Result<QueryExecutionResult>? result = await service.ExecuteQueryAsync(
             DataSourceType.MySql,
@@ -194,7 +208,30 @@ public sealed class DataSourceQueryServiceTests
     [Fact]
     public void Constructor_Should_Throw_When_ConnectorRegistry_Is_Null()
     {
-        Func<DataSourceQueryService>? action = () => new DataSourceQueryService(null!);
+        TestQuerySafetyValidator? querySafetyValidator = new TestQuerySafetyValidator(Result.Success());
+
+        Func<DataSourceQueryService>? action = () => new DataSourceQueryService(null!, querySafetyValidator);
+
+        action.Should().Throw<ArgumentNullException>();
+    }
+
+    /// <summary>
+    /// Verifies that the constructor rejects a null query safety validator.
+    /// </summary>
+    [Fact]
+    public void Constructor_Should_Throw_When_QuerySafetyValidator_Is_Null()
+    {
+        ConnectorRegistry? registry = new ConnectorRegistry(
+        [
+            new TestQueryDataConnector(
+                ConnectorType.PostgreSql,
+                new QueryExecutionResult(
+                    Array.Empty<string>(),
+                    Array.Empty<IReadOnlyDictionary<string, object?>>(),
+                    0))
+        ]);
+
+        Func<DataSourceQueryService>? action = () => new DataSourceQueryService(registry, null!);
 
         action.Should().Throw<ArgumentNullException>();
     }

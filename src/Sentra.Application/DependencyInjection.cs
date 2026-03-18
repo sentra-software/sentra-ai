@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
+using Sentra.Application.Abstractions.AI;
 using Sentra.Application.Abstractions.Connectors;
 using Sentra.Application.Abstractions.DataSources;
+using Sentra.Application.AI;
 using Sentra.Application.Connectors;
 using Sentra.Application.DataSources;
 
@@ -21,10 +23,12 @@ public static class DependencyInjection
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddSingleton<IConnectorRegistry, ConnectorRegistry>();
+        services.AddSingleton<IQuerySafetyValidator, QuerySafetyValidator>();
 
         services.AddScoped<IDataSourceConnectionService, DataSourceConnectionService>();
         services.AddScoped<IDataSourceSchemaService, DataSourceSchemaService>();
         services.AddScoped<IDataSourceQueryService, DataSourceQueryService>();
+        services.AddScoped<IAskQuestionService, AskQuestionService>();
 
         return services;
     }

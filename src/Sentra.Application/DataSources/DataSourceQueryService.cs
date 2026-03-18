@@ -13,19 +13,25 @@ namespace Sentra.Application.DataSources;
 public sealed class DataSourceQueryService : IDataSourceQueryService
 {
     private readonly IConnectorRegistry _connectorRegistry;
+    private readonly IQuerySafetyValidator _querySafetyValidator;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DataSourceQueryService"/> class.
     /// </summary>
     /// <param name="connectorRegistry">The connector registry.</param>
+    /// <param name="querySafetyValidator">The query safety validator.</param>
     /// <exception cref="ArgumentNullException">
-    /// Thrown when <paramref name="connectorRegistry"/> is <see langword="null"/>.
+    /// Thrown when <paramref name="connectorRegistry"/> or <paramref name="querySafetyValidator"/> is <see langword="null"/>.
     /// </exception>
-    public DataSourceQueryService(IConnectorRegistry connectorRegistry)
+    public DataSourceQueryService(
+        IConnectorRegistry connectorRegistry,
+        IQuerySafetyValidator querySafetyValidator)
     {
         ArgumentNullException.ThrowIfNull(connectorRegistry);
+        ArgumentNullException.ThrowIfNull(querySafetyValidator);
 
         _connectorRegistry = connectorRegistry;
+        _querySafetyValidator = querySafetyValidator;
     }
 
     /// <summary>
@@ -43,8 +49,7 @@ public sealed class DataSourceQueryService : IDataSourceQueryService
         DataSourceType dataSourceType,
         string connectionString,
         string query,
-        CancellationToken cancellationToken = default
-    )
+        CancellationToken cancellationToken = default)
     {
         Result? connectionStringValidationResult = ValidateConnectionString(connectionString);
         if (connectionStringValidationResult.IsFailure)
@@ -52,10 +57,10 @@ public sealed class DataSourceQueryService : IDataSourceQueryService
             return Result.Failure<QueryExecutionResult>(connectionStringValidationResult.Error);
         }
 
-        Result? queryValidationResult = ValidateQuery(query);
-        if (queryValidationResult.IsFailure)
+        Result? querySafetyValidationResult = _querySafetyValidator.Validate(query);
+        if (querySafetyValidationResult.IsFailure)
         {
-            return Result.Failure<QueryExecutionResult>(queryValidationResult.Error);
+            return Result.Failure<QueryExecutionResult>(querySafetyValidationResult.Error);
         }
 
         Result<ConnectorType>? connectorTypeResult = MapToConnectorType(dataSourceType);
@@ -74,8 +79,7 @@ public sealed class DataSourceQueryService : IDataSourceQueryService
         QueryExecutionResult? executionResult = await connector.ExecuteQueryAsync(
             connectionString.Trim(),
             query.Trim(),
-            cancellationToken
-        );
+            cancellationToken);
 
         return Result.Success(executionResult);
     }
@@ -123,26 +127,6 @@ public sealed class DataSourceQueryService : IDataSourceQueryService
                 Error.Validation(
                     "datasources.connection_string.required",
                     "Connection string is required."));
-        }
-
-        return Result.Success();
-    }
-
-    /// <summary>
-    /// Validates a raw query value.
-    /// </summary>
-    /// <param name="query">The raw query.</param>
-    /// <returns>A result indicating whether the value is valid.</returns>
-    private static Result ValidateQuery(string query)
-    {
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return Result.Failure(
-                Error.Validation(
-                    "datasources.query.required",
-                    "Query is required."
-                )
-            );
         }
 
         return Result.Success();

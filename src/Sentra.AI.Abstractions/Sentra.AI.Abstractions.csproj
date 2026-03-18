@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Sentra.SharedKernel\Sentra.SharedKernel.csproj" />
     <ProjectReference Include="..\Sentra.Contracts\Sentra.Contracts.csproj" />
+    <ProjectReference Include="..\Sentra.Connectors.Abstractions\Sentra.Connectors.Abstractions.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
