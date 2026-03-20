@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddScoped<IDataSourceSchemaService, DataSourceSchemaService>();
         services.AddScoped<IDataSourceQueryService, DataSourceQueryService>();
         services.AddScoped<IAskQuestionService, AskQuestionService>();
+        services.AddScoped<IPreviewQuestionService, PreviewQuestionService>();
 
         return services;
     }

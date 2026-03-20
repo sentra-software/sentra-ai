@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Sentra.Domain.Auditing;
 using Sentra.Domain.DataSources;
 using Sentra.Domain.Tenants;
 using Sentra.Domain.Users;
@@ -36,6 +37,11 @@ public sealed class SentraPlatformDbContext
     /// Gets the data source set.
     /// </summary>
     public DbSet<DataSource> DataSources => Set<DataSource>();
+
+    /// <summary>
+    /// Gets the AI query audit log set.
+    /// </summary>
+    public DbSet<AiQueryAuditLog> AiQueryAuditLogs => Set<AiQueryAuditLog>();
 
     /// <summary>
     /// Configures the EF Core model.

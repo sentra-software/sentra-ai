@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Sentra.Api.Models.Auth;
 using Sentra.Domain.Tenants;
@@ -16,6 +17,7 @@ namespace Sentra.Api.Controllers;
 /// Provides authentication endpoints for the Sentra platform.
 /// </summary>
 [ApiController]
+[EnableRateLimiting("auth")]
 [Route("api/auth")]
 public sealed class AuthController : ControllerBase
 {

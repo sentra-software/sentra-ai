@@ -1,9 +1,12 @@
+using System.Diagnostics;
 using Sentra.AI.Abstractions.Answers;
 using Sentra.AI.Abstractions.Sql;
 using Sentra.Application.Abstractions.AI;
+using Sentra.Application.Abstractions.Auditing;
 using Sentra.Application.Abstractions.DataSources;
 using Sentra.Connectors.Abstractions.Querying;
 using Sentra.Connectors.Abstractions.Schema;
+using Sentra.Domain.Auditing;
 using Sentra.Domain.DataSources;
 using Sentra.SharedKernel.Results;
 
@@ -19,100 +22,123 @@ public sealed class AskQuestionService : IAskQuestionService
     private readonly ISqlGenerationService _sqlGenerationService;
     private readonly IQuerySafetyValidator _querySafetyValidator;
     private readonly IAnswerGenerationService _answerGenerationService;
+    private readonly IAiQueryAuditLogWriter _auditLogWriter;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AskQuestionService"/> class.
     /// </summary>
-    /// <param name="schemaService">The schema service.</param>
-    /// <param name="queryService">The query service.</param>
-    /// <param name="sqlGenerationService">The SQL generation service.</param>
-    /// <param name="querySafetyValidator">The query safety validator.</param>
-    /// <param name="answerGenerationService">The answer generation service.</param>
     public AskQuestionService(
         IDataSourceSchemaService schemaService,
         IDataSourceQueryService queryService,
         ISqlGenerationService sqlGenerationService,
         IQuerySafetyValidator querySafetyValidator,
-        IAnswerGenerationService answerGenerationService)
+        IAnswerGenerationService answerGenerationService,
+        IAiQueryAuditLogWriter auditLogWriter)
     {
         ArgumentNullException.ThrowIfNull(schemaService);
         ArgumentNullException.ThrowIfNull(queryService);
         ArgumentNullException.ThrowIfNull(sqlGenerationService);
         ArgumentNullException.ThrowIfNull(querySafetyValidator);
         ArgumentNullException.ThrowIfNull(answerGenerationService);
+        ArgumentNullException.ThrowIfNull(auditLogWriter);
 
         _schemaService = schemaService;
         _queryService = queryService;
         _sqlGenerationService = sqlGenerationService;
         _querySafetyValidator = querySafetyValidator;
         _answerGenerationService = answerGenerationService;
+        _auditLogWriter = auditLogWriter;
     }
 
-    /// <summary>
-    /// Processes a natural-language question and returns a structured result.
-    /// </summary>
-    /// <param name="dataSourceType">The data source type.</param>
-    /// <param name="connectionString">The raw connection string.</param>
-    /// <param name="question">The user question.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>
-    /// A successful result containing the generated SQL, query result, and answer;
-    /// otherwise, a failed result describing the error.
-    /// </returns>
+    /// <inheritdoc />
     public async Task<Result<AskQuestionResult>> AskAsync(
         DataSourceType dataSourceType,
         string connectionString,
         string question,
+        AskQuestionAuditContext? auditContext = null,
         CancellationToken cancellationToken = default)
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        string? generatedSql = null;
+        int? rowCount = null;
+
+        async Task WriteAuditAsync(
+            AiQueryAuditStatus status,
+            string? errorCode = null,
+            string? errorMessage = null)
+        {
+            if (auditContext is null)
+            {
+                return;
+            }
+
+            await _auditLogWriter.WriteAsync(
+                new AiQueryAuditLogEntry(
+                    auditContext.TenantId,
+                    auditContext.IdentityUserId,
+                    auditContext.DataSourceId,
+                    question,
+                    generatedSql,
+                    rowCount,
+                    status,
+                    errorCode,
+                    errorMessage,
+                    (int)stopwatch.ElapsedMilliseconds),
+                cancellationToken);
+        }
+
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            return Result.Failure<AskQuestionResult>(
-                Error.Validation(
-                    "ai.connection_string.required",
-                    "Connection string is required."));
+            Result<AskQuestionResult> failure = Result.Failure<AskQuestionResult>(
+                Error.Validation("ai.connection_string.required", "Connection string is required."));
+            await WriteAuditAsync(AiQueryAuditStatus.Failed, failure.Error.Code, failure.Error.Message);
+            return failure;
         }
 
         if (string.IsNullOrWhiteSpace(question))
         {
-            return Result.Failure<AskQuestionResult>(
-                Error.Validation(
-                    "ai.question.required",
-                    "Question is required."));
+            Result<AskQuestionResult> failure = Result.Failure<AskQuestionResult>(
+                Error.Validation("ai.question.required", "Question is required."));
+            await WriteAuditAsync(AiQueryAuditStatus.Failed, failure.Error.Code, failure.Error.Message);
+            return failure;
         }
 
-        string? trimmedQuestion = question.Trim();
-        string? trimmedConnectionString = connectionString.Trim();
+        string trimmedQuestion = question.Trim();
+        string trimmedConnectionString = connectionString.Trim();
 
-        Result<IReadOnlyCollection<TableSchema>>? schemaResult = await _schemaService.ReadSchemaAsync(
-            dataSourceType,
-            trimmedConnectionString,
-            cancellationToken);
+        Result<IReadOnlyCollection<TableSchema>> schemaResult =
+            await _schemaService.ReadSchemaAsync(dataSourceType, trimmedConnectionString, cancellationToken);
 
         if (schemaResult.IsFailure)
         {
-            return Result.Failure<AskQuestionResult>(schemaResult.Error);
+            Result<AskQuestionResult> failure = Result.Failure<AskQuestionResult>(schemaResult.Error);
+            await WriteAuditAsync(AiQueryAuditStatus.Failed, failure.Error.Code, failure.Error.Message);
+            return failure;
         }
 
-        Result<string>? sqlResult = await _sqlGenerationService.GenerateSqlAsync(
+        Result<string> sqlResult = await _sqlGenerationService.GenerateSqlAsync(
             trimmedQuestion,
             schemaResult.ValueOrThrow(),
             cancellationToken);
 
         if (sqlResult.IsFailure)
         {
-            return Result.Failure<AskQuestionResult>(sqlResult.Error);
+            Result<AskQuestionResult> failure = Result.Failure<AskQuestionResult>(sqlResult.Error);
+            await WriteAuditAsync(AiQueryAuditStatus.Failed, failure.Error.Code, failure.Error.Message);
+            return failure;
         }
 
-        string? generatedSql = sqlResult.ValueOrThrow();
+        generatedSql = sqlResult.ValueOrThrow();
 
-        Result? querySafetyResult = _querySafetyValidator.Validate(generatedSql);
-        if (querySafetyResult.IsFailure)
+        Result safetyResult = _querySafetyValidator.Validate(generatedSql);
+        if (safetyResult.IsFailure)
         {
-            return Result.Failure<AskQuestionResult>(querySafetyResult.Error);
+            Result<AskQuestionResult> failure = Result.Failure<AskQuestionResult>(safetyResult.Error);
+            await WriteAuditAsync(AiQueryAuditStatus.Blocked, failure.Error.Code, failure.Error.Message);
+            return failure;
         }
 
-        Result<QueryExecutionResult>? queryResult = await _queryService.ExecuteQueryAsync(
+        Result<QueryExecutionResult> queryResult = await _queryService.ExecuteQueryAsync(
             dataSourceType,
             trimmedConnectionString,
             generatedSql,
@@ -120,12 +146,15 @@ public sealed class AskQuestionService : IAskQuestionService
 
         if (queryResult.IsFailure)
         {
-            return Result.Failure<AskQuestionResult>(queryResult.Error);
+            Result<AskQuestionResult> failure = Result.Failure<AskQuestionResult>(queryResult.Error);
+            await WriteAuditAsync(AiQueryAuditStatus.Failed, failure.Error.Code, failure.Error.Message);
+            return failure;
         }
 
-        QueryExecutionResult? executedQueryResult = queryResult.ValueOrThrow();
+        QueryExecutionResult executedQueryResult = queryResult.ValueOrThrow();
+        rowCount = executedQueryResult.RowCount;
 
-        Result<string>? answerResult = await _answerGenerationService.GenerateAnswerAsync(
+        Result<string> answerResult = await _answerGenerationService.GenerateAnswerAsync(
             trimmedQuestion,
             generatedSql,
             executedQueryResult,
@@ -133,13 +162,19 @@ public sealed class AskQuestionService : IAskQuestionService
 
         if (answerResult.IsFailure)
         {
-            return Result.Failure<AskQuestionResult>(answerResult.Error);
+            Result<AskQuestionResult> failure = Result.Failure<AskQuestionResult>(answerResult.Error);
+            await WriteAuditAsync(AiQueryAuditStatus.Failed, failure.Error.Code, failure.Error.Message);
+            return failure;
         }
 
-        return Result.Success(new AskQuestionResult(
+        AskQuestionResult successValue = new(
             trimmedQuestion,
             generatedSql,
             executedQueryResult,
-            answerResult.ValueOrThrow()));
+            answerResult.ValueOrThrow());
+
+        await WriteAuditAsync(AiQueryAuditStatus.Succeeded);
+
+        return Result.Success(successValue);
     }
 }

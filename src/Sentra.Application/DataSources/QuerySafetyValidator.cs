@@ -23,7 +23,15 @@ public sealed partial class QuerySafetyValidator : IQuerySafetyValidator
         "MERGE",
         "CALL",
         "EXEC",
-        "EXECUTE"
+        "EXECUTE",
+        "ATTACH",
+        "DETACH",
+        "COPY",
+        "REPLACE",
+        "VACUUM",
+        "ANALYZE",
+        "PRAGMA",
+        "INTO"
     ];
 
     /// <inheritdoc/>
@@ -39,7 +47,8 @@ public sealed partial class QuerySafetyValidator : IQuerySafetyValidator
 
         string? trimmedQuery = query.Trim();
 
-        if (!trimmedQuery.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+        if (!trimmedQuery.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase) &&
+            (!trimmedQuery.StartsWith("WITH", StringComparison.OrdinalIgnoreCase)))
         {
             return Result.Failure(
                 Error.Validation(

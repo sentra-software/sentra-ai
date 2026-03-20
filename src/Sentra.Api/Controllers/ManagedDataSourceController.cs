@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Sentra.Api.Models;
 using Sentra.Api.Models.ManagedDataSources;
@@ -21,7 +22,8 @@ namespace Sentra.Api.Controllers;
 /// Provides secure tenant-owned managed data source endpoints.
 /// </summary>
 [ApiController]
-[Authorize]
+[Authorize(Policy = "CanManageDataSources")]
+[EnableRateLimiting("managed-data-sources")]
 [Route("api/managed-data-sources")]
 public sealed class ManagedDataSourcesController : ControllerBase
 {

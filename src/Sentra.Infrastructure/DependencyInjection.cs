@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Sentra.Application.Abstractions.Auditing;
 using Sentra.Application.Abstractions.Security;
 using Sentra.Infrastructure.Persistence;
 using Sentra.Infrastructure.Security;
@@ -52,6 +53,7 @@ public static class DependencyInjection
 
         services.AddDataProtection();
         services.AddScoped<IConnectionStringProtector, DataProtectionConnectionStringProtector>();
+        services.AddScoped<IAiQueryAuditLogWriter, AiQueryAuditLogWriter>();
 
         return services;
     }

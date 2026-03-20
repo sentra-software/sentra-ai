@@ -1,4 +1,5 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
@@ -8,6 +9,7 @@ using Sentra.Application;
 using Sentra.Connectors.PostgreSql;
 using Sentra.Infrastructure;
 using Sentra.Security;
+using Sentra.Security.Extensions;
 using Sentra.Security.Jwt;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -44,7 +46,94 @@ builder.Services
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("CanManageDataSources", policy =>
+        policy.RequireClaim("platform_role", "Owner", "Admin"));
+
+    options.AddPolicy("CanViewAuditLogs", policy =>
+        policy.RequireClaim("platform_role", "Owner", "Admin"));
+
+    options.AddPolicy("CanUseChat", policy =>
+        policy.RequireClaim("platform_role", "Owner", "Admin", "Member"));
+});
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy("auth", context =>
+    {
+        string partitionKey =
+            context.Connection.RemoteIpAddress?.ToString() ??
+            "unknown-ip";
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
+
+    options.AddPolicy("ai-chat", context =>
+    {
+        Guid userId = context.User.GetIdentityUserId();
+        string partitionKey = userId == Guid.Empty
+            ? $"anon:{context.Connection.RemoteIpAddress}"
+            : $"user:{userId}";
+
+        return RateLimitPartition.GetTokenBucketLimiter(
+            partitionKey,
+            _ => new TokenBucketRateLimiterOptions
+            {
+                TokenLimit = 20,
+                TokensPerPeriod = 20,
+                ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
+
+    options.AddPolicy("audit-api", context =>
+    {
+        Guid userId = context.User.GetIdentityUserId();
+        string partitionKey = userId == Guid.Empty
+            ? $"anon:{context.Connection.RemoteIpAddress}"
+            : $"user:{userId}";
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
+
+    options.AddPolicy("managed-data-sources", context =>
+    {
+        Guid userId = context.User.GetIdentityUserId();
+        string partitionKey = userId == Guid.Empty
+            ? $"anon:{context.Connection.RemoteIpAddress}"
+            : $"user:{userId}";
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
+});
 
 WebApplication app = builder.Build();
 
@@ -60,6 +149,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapControllers();
 
