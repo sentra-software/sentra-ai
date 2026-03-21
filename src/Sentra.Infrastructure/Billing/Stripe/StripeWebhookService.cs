@@ -36,6 +36,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
     {
         string? tenantIdValue = session.Metadata?.GetValueOrDefault("tenant_id");
         string? planCode = session.Metadata?.GetValueOrDefault("plan_code");
+        string? billingIntervalValue = session.Metadata?.GetValueOrDefault("billing_interval");
 
         if (!Guid.TryParse(tenantIdValue, out Guid tenantId))
         {
@@ -49,7 +50,14 @@ public sealed class StripeWebhookService : IStripeWebhookService
                 "Stripe checkout session did not contain a valid plan_code.");
         }
 
+        if (string.IsNullOrWhiteSpace(billingIntervalValue))
+        {
+            throw new InvalidOperationException(
+                "Stripe checkout session did not contain a valid billing_interval.");
+        }
+
         string normalizedPlanCode = planCode.Trim().ToUpperInvariant();
+        string normalizedBillingInterval = billingIntervalValue.Trim().ToUpperInvariant();
 
         LicensePlan? plan = await _dbContext.LicensePlans
             .FirstOrDefaultAsync(
@@ -69,34 +77,46 @@ public sealed class StripeWebhookService : IStripeWebhookService
                 x => x.TenantId == typedTenantId,
                 cancellationToken);
 
+        DateTime startsAtUtc = DateTime.UtcNow;
+        DateTime? endsAtUtc = CalculatePeriodEndUtc(startsAtUtc, normalizedBillingInterval);
+
         if (existingSubscription is null)
         {
             Result<TenantSubscription> createResult = TenantSubscription.CreateActive(
                 typedTenantId,
                 plan.Id,
-                DateTime.UtcNow);
+                startsAtUtc);
 
             if (createResult.IsFailure)
             {
                 throw new InvalidOperationException(createResult.Error.Message);
             }
 
-            _dbContext.TenantSubscriptions.Add(createResult.ValueOrThrow());
+            TenantSubscription subscription = createResult.ValueOrThrow();
+            subscription.SetActivePeriod(startsAtUtc, endsAtUtc);
+
+            _dbContext.TenantSubscriptions.Add(subscription);
 
             _logger.LogInformation(
-                "Created Sentra tenant subscription for tenant {TenantId} with plan {PlanCode}.",
+                "Created Sentra tenant subscription for tenant {TenantId} with plan {PlanCode} and interval {BillingInterval}. StartsAtUtc={StartsAtUtc}, EndsAtUtc={EndsAtUtc}",
                 tenantId,
-                normalizedPlanCode);
+                normalizedPlanCode,
+                normalizedBillingInterval,
+                startsAtUtc,
+                endsAtUtc);
         }
         else
         {
             existingSubscription.ChangePlan(plan.Id);
-            existingSubscription.Activate();
+            existingSubscription.Renew(startsAtUtc, endsAtUtc);
 
             _logger.LogInformation(
-                "Updated Sentra tenant subscription for tenant {TenantId} to plan {PlanCode}.",
+                "Updated Sentra tenant subscription for tenant {TenantId} to plan {PlanCode} and interval {BillingInterval}. StartsAtUtc={StartsAtUtc}, EndsAtUtc={EndsAtUtc}",
                 tenantId,
-                normalizedPlanCode);
+                normalizedPlanCode,
+                normalizedBillingInterval,
+                startsAtUtc,
+                endsAtUtc);
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -109,6 +129,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
     {
         string? tenantIdValue = subscription.Metadata?.GetValueOrDefault("tenant_id");
         string? planCode = subscription.Metadata?.GetValueOrDefault("plan_code");
+        string? billingIntervalValue = subscription.Metadata?.GetValueOrDefault("billing_interval");
 
         if (!Guid.TryParse(tenantIdValue, out Guid tenantId))
         {
@@ -151,18 +172,22 @@ public sealed class StripeWebhookService : IStripeWebhookService
             }
         }
 
+        string normalizedBillingInterval = billingIntervalValue?.Trim().ToUpperInvariant() ?? "MONTHLY";
+
         switch (subscription.Status?.Trim().ToLowerInvariant())
         {
             case "trialing":
             case "active":
-                existingSubscription.Activate();
-                break;
+                {
+                    DateTime startsAtUtc = DateTime.UtcNow;
+                    DateTime? endsAtUtc = CalculatePeriodEndUtc(startsAtUtc, normalizedBillingInterval);
+
+                    existingSubscription.Renew(startsAtUtc, endsAtUtc);
+                    break;
+                }
 
             case "past_due":
             case "unpaid":
-                // Minimal working version:
-                // keep the subscription active in the entity shape you currently have.
-                // You can extend the domain later with a MarkPastDue() method.
                 break;
 
             case "canceled":
@@ -218,5 +243,15 @@ public sealed class StripeWebhookService : IStripeWebhookService
         _logger.LogInformation(
             "Cancelled Sentra tenant subscription for tenant {TenantId}.",
             tenantId);
+    }
+
+    private static DateTime? CalculatePeriodEndUtc(DateTime startsAtUtc, string billingInterval)
+    {
+        return billingInterval switch
+        {
+            "YEARLY" => startsAtUtc.AddYears(1),
+            "MONTHLY" => startsAtUtc.AddMonths(1),
+            _ => startsAtUtc.AddMonths(1)
+        };
     }
 }

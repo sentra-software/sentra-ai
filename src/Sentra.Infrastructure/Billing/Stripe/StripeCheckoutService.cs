@@ -97,7 +97,7 @@ public sealed class StripeCheckoutService : IBillingCheckoutService
             ("STARTER", "YEARLY") => _options.StarterYearlyPriceId,
             ("GROWTH", "MONTHLY") => _options.GrowthMonthlyPriceId,
             ("GROWTH", "YEARLY") => _options.GrowthYearlyPriceId,
-            _ => $"Unsupported Stripe billing combination: {planCode} / {billingInterval}."
+            _ => null
         };
     }
 }

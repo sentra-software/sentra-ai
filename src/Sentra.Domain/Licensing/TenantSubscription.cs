@@ -158,6 +158,28 @@ public sealed class TenantSubscription : AggregateRoot<TenantSubscriptionId>
     }
 
     /// <summary>
+    /// Marks the subscription as active for the provided billing period.
+    /// </summary>
+    public void SetActivePeriod(DateTime startsAtUtc, DateTime? endsAtUtc)
+    {
+        StartsAtUtc = startsAtUtc;
+        EndsAtUtc = endsAtUtc;
+        Status = SubscriptionStatus.Active;
+        TrialEndsAtUtc = null;
+    }
+
+    /// <summary>
+    /// Renews the subscription for a new billing period and keeps it active.
+    /// </summary>
+    public void Renew(DateTime startsAtUtc, DateTime? endsAtUtc)
+    {
+        StartsAtUtc = startsAtUtc;
+        EndsAtUtc = endsAtUtc;
+        Status = SubscriptionStatus.Active;
+        TrialEndsAtUtc = null;
+    }
+
+    /// <summary>
     /// Cancels the subscription.
     /// </summary>
     public void Cancel(DateTime endsAtUtc)
