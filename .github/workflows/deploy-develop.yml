@@ -36,7 +36,7 @@ jobs:
         run: dotnet build ./Sentra.sln --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test
+        run: dotnet test ./Sentra.sln --no-build --configuration Release
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -67,12 +67,9 @@ jobs:
           key: ${{ secrets.DEV_SSH_KEY }}
           port: ${{ secrets.DEV_PORT }}
           script: |
-            set -e
-
             echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
-
             cd /opt/sentra/compose
             docker compose pull
+            docker compose down --remove-orphans
             docker compose up -d
-
             docker image prune -af
