@@ -12,6 +12,7 @@ public interface IJwtTokenGenerator
     /// </summary>
     /// <param name="user">The identity user.</param>
     /// <param name="roles">The assigned roles.</param>
+    /// <param name="platformRole">The platform role of the user.</param>
     /// <returns>The serialized JWT access token.</returns>
-    string GenerateToken(ApplicationIdentityUser user, IReadOnlyCollection<string> roles);
+    string GenerateToken(ApplicationIdentityUser user, IReadOnlyCollection<string> roles, string platformRole);
 }

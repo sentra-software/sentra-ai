@@ -24,7 +24,7 @@ public sealed class JwtTokenGenerator : IJwtTokenGenerator
     }
 
     /// <inheritdoc />
-    public string GenerateToken(ApplicationIdentityUser user, IReadOnlyCollection<string> roles)
+    public string GenerateToken(ApplicationIdentityUser user, IReadOnlyCollection<string> roles, string platformRole)
     {
         List<Claim> claims =
         [
@@ -33,7 +33,8 @@ public sealed class JwtTokenGenerator : IJwtTokenGenerator
             new(JwtRegisteredClaimNames.UniqueName, user.UserName ?? user.Email ?? string.Empty),
             new("tenant_id", user.TenantId.ToString()),
             new("domain_user_id", user.DomainUserId.ToString()),
-            new("display_name", user.DisplayName)
+            new("display_name", user.DisplayName),
+            new("platform_role", platformRole)
         ];
 
         foreach (string role in roles)

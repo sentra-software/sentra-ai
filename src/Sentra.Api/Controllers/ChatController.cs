@@ -7,6 +7,7 @@ using Sentra.Api.Models;
 using Sentra.Api.Models.Chat;
 using Sentra.Application.Abstractions.AI;
 using Sentra.Application.Abstractions.Auditing;
+using Sentra.Application.Abstractions.Licensing;
 using Sentra.Application.Abstractions.Security;
 using Sentra.Domain.DataSources;
 using Sentra.Domain.Tenants;
@@ -26,19 +27,7 @@ namespace Sentra.Api.Controllers;
 [Route("api/chat")]
 public sealed class ChatController : ControllerBase
 {
-    /// <summary>
-    /// Asks a natural-language question against a managed data source.
-    /// </summary>
-    /// <param name="request">The incoming ask-question request.</param>
-    /// <param name="service">The ask-question service.</param>
-    /// <param name="dbContext">The platform database context.</param>
-    /// <param name="userManager">The identity user manager.</param>
-    /// <param name="connectionStringProtector">The connection string protector.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>
-    /// An HTTP response containing either the ask-question response
-    /// or a standardized error response.
-    /// </returns>
+    /// <inheritdoc/>
     [HttpPost("ask")]
     [ProducesResponseType(typeof(AskQuestionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
@@ -48,6 +37,7 @@ public sealed class ChatController : ControllerBase
         [FromServices] SentraPlatformDbContext dbContext,
         [FromServices] UserManager<ApplicationIdentityUser> userManager,
         [FromServices] IConnectionStringProtector connectionStringProtector,
+        [FromServices] ICurrentTenantLicenseService licenseService,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Question))
@@ -71,6 +61,17 @@ public sealed class ChatController : ControllerBase
         if (identityUser is null)
         {
             return Unauthorized();
+        }
+
+        Result queryLicenseResult = await licenseService.EnsureQueryAllowedAsync(
+            tenantIdValue, cancellationToken
+        );
+
+        if(queryLicenseResult.IsFailure)
+        {
+            return BadRequest(new ApiErrorResponse(
+                queryLicenseResult.Error.Code,
+                queryLicenseResult.Error.Message));
         }
 
         Guid? selectedDataSourceId = request.DataSourceId ?? identityUser.ActiveDataSourceId;
@@ -137,6 +138,7 @@ public sealed class ChatController : ControllerBase
     [FromServices] SentraPlatformDbContext dbContext,
     [FromServices] UserManager<ApplicationIdentityUser> userManager,
     [FromServices] IConnectionStringProtector connectionStringProtector,
+    [FromServices] ICurrentTenantLicenseService licenseService,
     CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Question))
@@ -160,6 +162,17 @@ public sealed class ChatController : ControllerBase
         if (identityUser is null)
         {
             return Unauthorized();
+        }
+
+        Result previewLicenseResult = await licenseService.EnsurePreviewAllowedAsync(
+            tenantIdValue, cancellationToken
+        );
+
+        if(previewLicenseResult.IsFailure)
+        {
+            return BadRequest(new ApiErrorResponse(
+                previewLicenseResult.Error.Code,
+                previewLicenseResult.Error.Message));
         }
 
         Guid? selectedDataSourceId = request.DataSourceId ?? identityUser.ActiveDataSourceId;

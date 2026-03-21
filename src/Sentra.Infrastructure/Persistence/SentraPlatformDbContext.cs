@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Sentra.Domain.Auditing;
 using Sentra.Domain.DataSources;
+using Sentra.Domain.Licensing;
 using Sentra.Domain.Tenants;
 using Sentra.Domain.Users;
 using Sentra.Security.Identity;
@@ -42,6 +43,16 @@ public sealed class SentraPlatformDbContext
     /// Gets the AI query audit log set.
     /// </summary>
     public DbSet<AiQueryAuditLog> AiQueryAuditLogs => Set<AiQueryAuditLog>();
+
+    /// <summary>
+    /// Gets the license plan set.
+    /// </summary>
+    public DbSet<LicensePlan> LicensePlans => Set<LicensePlan>();
+
+    /// <summary>
+    /// Gets the tenant subscription set.
+    /// </summary>
+    public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
 
     /// <summary>
     /// Configures the EF Core model.

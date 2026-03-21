@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Sentra.Api.Models;
 using Sentra.Api.Models.ManagedDataSources;
 using Sentra.Application.Abstractions.DataSources;
+using Sentra.Application.Abstractions.Licensing;
 using Sentra.Application.Abstractions.Security;
 using Sentra.Application.DataSources;
 using Sentra.Connectors.Abstractions.Connectors;
@@ -31,6 +32,7 @@ public sealed class ManagedDataSourcesController : ControllerBase
     private readonly UserManager<ApplicationIdentityUser> _userManager;
     private readonly IDataSourceConnectionService _connectionService;
     private readonly IConnectionStringProtector _connectionStringProtector;
+    private readonly ICurrentTenantLicenseService _licenseService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ManagedDataSourcesController"/> class.
@@ -39,12 +41,14 @@ public sealed class ManagedDataSourcesController : ControllerBase
         SentraPlatformDbContext dbContext,
         UserManager<ApplicationIdentityUser> userManager,
         IDataSourceConnectionService connectionService,
-        IConnectionStringProtector connectionStringProtector)
+        IConnectionStringProtector connectionStringProtector,
+        ICurrentTenantLicenseService licenseService)
     {
         _dbContext = dbContext;
         _userManager = userManager;
         _connectionService = connectionService;
         _connectionStringProtector = connectionStringProtector;
+        _licenseService = licenseService;
     }
 
     /// <summary>
@@ -139,6 +143,18 @@ public sealed class ManagedDataSourcesController : ControllerBase
         if (tenantIdValue == Guid.Empty)
         {
             return Unauthorized();
+        }
+
+        Result licenseResult = await _licenseService.EnsureManagedDataSourceCreationAllowedAsync(
+            tenantIdValue, cancellationToken
+        );
+
+        if(licenseResult.IsFailure)
+        {
+            return BadRequest(new ApiErrorResponse(
+                licenseResult.Error.Code,
+                licenseResult.Error.Message
+            ));
         }
 
         if (string.IsNullOrWhiteSpace(request.Name) ||

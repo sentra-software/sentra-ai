@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Sentra.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Sentra.Infrastructure.Persistence;
 namespace Sentra.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SentraPlatformDbContext))]
-    partial class SentraPlatformDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260320104314_AddLicensingFoundation")]
+    partial class AddLicensingFoundation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -1,9 +1,12 @@
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Sentra.Application.Abstractions.Auditing;
+using Sentra.Application.Abstractions.Billing;
+using Sentra.Application.Abstractions.Licensing;
 using Sentra.Application.Abstractions.Security;
+using Sentra.Infrastructure.Billing.Stripe;
+using Sentra.Infrastructure.Licensing;
 using Sentra.Infrastructure.Persistence;
 using Sentra.Infrastructure.Security;
 using Sentra.Security.Identity;
@@ -54,6 +57,14 @@ public static class DependencyInjection
         services.AddDataProtection();
         services.AddScoped<IConnectionStringProtector, DataProtectionConnectionStringProtector>();
         services.AddScoped<IAiQueryAuditLogWriter, AiQueryAuditLogWriter>();
+        services.AddScoped<ICurrentTenantLicenseService, CurrentTenantLicenseService>();
+
+        services.Configure<StripeBillingOptions>(options =>
+        {
+            configuration.GetSection(StripeBillingOptions.SectionName).Bind(options);
+        });
+
+        services.AddScoped<IBillingCheckoutService, StripeCheckoutService>();
 
         return services;
     }

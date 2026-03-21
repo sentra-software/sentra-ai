@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Sentra.Api.Models.Auth;
+using Sentra.Domain.Licensing;
 using Sentra.Domain.Tenants;
 using Sentra.Domain.Users;
 using Sentra.Infrastructure.Persistence;
@@ -46,7 +47,8 @@ public sealed class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Registers a new tenant and owner account.
+    /// Registers a new Sentra account, creates a tenant,
+    /// and provisions the Starter plan as a trial subscription.
     /// </summary>
     /// <param name="request">The registration request.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
@@ -85,7 +87,7 @@ public sealed class AuthController : ControllerBase
         Tenant tenant = tenantResult.Value!;
 
         Result<DomainUser> domainUserResult = DomainUser.Create(
-            (TenantId)tenant!.Id,
+            (TenantId)tenant.Id,
             request.Email,
             request.DisplayName,
             UserRole.Owner);
@@ -101,7 +103,7 @@ public sealed class AuthController : ControllerBase
             await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
         _dbContext.Tenants.Add(tenant);
-        _dbContext.PlatformUsers.Add(domainUser!);
+        _dbContext.PlatformUsers.Add(domainUser);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         const string ownerRole = "Owner";
@@ -149,9 +151,66 @@ public sealed class AuthController : ControllerBase
             return BadRequest(addRoleResult.Errors.Select(x => x.Description));
         }
 
+        LicensePlan? starterPlan = await _dbContext.LicensePlans
+            .FirstOrDefaultAsync(x => x.Code == "STARTER" && x.IsActive, cancellationToken);
+
+        if (starterPlan is null)
+        {
+            Result starterPlanResult = LicensePlan.Create(
+                name: "Starter",
+                code: "STARTER",
+                maxManagedDataSources: 1,
+                maxQueriesPerMonth: 250,
+                previewEnabled: true,
+                auditRetentionDays: 30,
+                mySqlEnabled: false,
+                sqliteEnabled: false,
+                pricePerMonth: 0m);
+
+            if (starterPlanResult.IsFailure)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return BadRequest(starterPlanResult.Error.Message);
+            }
+
+            starterPlan = ((Result<LicensePlan>)starterPlanResult).ValueOrThrow();
+
+            _dbContext.LicensePlans.Add(starterPlan);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        bool subscriptionAlreadyExists = await _dbContext.TenantSubscriptions
+            .AnyAsync(x => x.TenantId == (TenantId)tenant.Id, cancellationToken);
+
+        if (subscriptionAlreadyExists)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return BadRequest("A subscription already exists for this tenant.");
+        }
+
+        Result subscriptionResult = TenantSubscription.CreateTrial(
+            (TenantId)tenant.Id,
+            starterPlan.Id,
+            trialDays: 14);
+
+        if (subscriptionResult.IsFailure)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return BadRequest(subscriptionResult.Error.Message);
+        }
+
+        TenantSubscription subscription =
+            ((Result<TenantSubscription>)subscriptionResult).ValueOrThrow();
+
+        _dbContext.TenantSubscriptions.Add(subscription);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
         await transaction.CommitAsync(cancellationToken);
 
-        string accessToken = _jwtTokenGenerator.GenerateToken(identityUser, [ownerRole]);
+        string accessToken = _jwtTokenGenerator.GenerateToken(
+            identityUser,
+            [ownerRole],
+            domainUser.Role.ToString());
 
         return Ok(new AuthResponse
         {
@@ -205,7 +264,18 @@ public sealed class AuthController : ControllerBase
         await _userManager.ResetAccessFailedCountAsync(identityUser);
 
         IList<string> roles = await _userManager.GetRolesAsync(identityUser);
-        string accessToken = _jwtTokenGenerator.GenerateToken(identityUser, roles.ToArray());
+
+        UserId domainUserId = new(identityUser.DomainUserId);
+        DomainUser? platformUser = await _dbContext.PlatformUsers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(user => user.Id == domainUserId);
+        
+        if(platformUser is null)
+        {
+            return Unauthorized("The linked platform user could not be found.");
+        }
+
+        string accessToken = _jwtTokenGenerator.GenerateToken(identityUser, roles.ToArray(), platformUser!.Role.ToString());
 
         return Ok(new AuthResponse
         {
