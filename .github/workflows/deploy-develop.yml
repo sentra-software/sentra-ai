@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: ghcr.io/sentra-software/sentra-ai
+  IMAGE_NAME: ${{ vars.IMAGE_NAME }}
 
 jobs:
   test-build-publish-deploy:
@@ -27,7 +27,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: ${{ vars.DOTNET_VERSION }}
 
       - name: Restore
         run: dotnet restore ./Sentra.sln
@@ -62,12 +62,12 @@ jobs:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.DEV_HOST }}
-          username: ${{ secrets.DEV_USERNAME }}
-          key: ${{ secrets.DEV_SSH_KEY }}
-          port: ${{ secrets.DEV_PORT }}
+          host: ${{ vars.DEV_HOST }}
+          username: ${{ vars.DEV_USERNAME }}
+          key: ${{ vars.DEV_SSH_KEY }}
+          port: ${{ vars.DEV_PORT }}
           script: |
-            echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+            echo "${{ vars.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ vars.GHCR_USERNAME }}" --password-stdin
             cd /opt/sentra/compose
             docker compose pull
             docker compose down --remove-orphans
