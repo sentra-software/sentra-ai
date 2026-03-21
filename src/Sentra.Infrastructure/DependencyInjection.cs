@@ -65,6 +65,7 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IBillingCheckoutService, StripeCheckoutService>();
+        services.AddScoped<IStripeWebhookService, StripeWebhookService>();
 
         return services;
     }

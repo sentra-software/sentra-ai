@@ -27,6 +27,7 @@ public sealed class StripeCheckoutService : IBillingCheckoutService
         Guid tenantId,
         string email,
         string planCode,
+        string billingInterval,
         CancellationToken cancellationToken = default)
     {
         if (tenantId == Guid.Empty)
@@ -43,7 +44,7 @@ public sealed class StripeCheckoutService : IBillingCheckoutService
                 "Email is required."));
         }
 
-        string? priceId = ResolvePriceId(planCode);
+        string? priceId = ResolvePriceId(planCode, billingInterval);
         if (string.IsNullOrWhiteSpace(priceId))
         {
             return Result.Failure<string>(Error.Validation(
@@ -60,14 +61,16 @@ public sealed class StripeCheckoutService : IBillingCheckoutService
             Metadata = new Dictionary<string, string>
             {
                 ["tenant_id"] = tenantId.ToString(),
-                ["plan_code"] = planCode.Trim().ToUpperInvariant()
+                ["plan_code"] = planCode.Trim().ToUpperInvariant(),
+                ["billing_interval"] = billingInterval.Trim().ToUpperInvariant()
             },
             SubscriptionData = new SessionSubscriptionDataOptions
             {
                 Metadata = new Dictionary<string, string>
                 {
                     ["tenant_id"] = tenantId.ToString(),
-                    ["plan_code"] = planCode.Trim().ToUpperInvariant()
+                    ["plan_code"] = planCode.Trim().ToUpperInvariant(),
+                    ["billing_interval"] = billingInterval.Trim().ToUpperInvariant()
                 }
             },
             LineItems =
@@ -86,14 +89,15 @@ public sealed class StripeCheckoutService : IBillingCheckoutService
         return Result.Success(session.Url);
     }
 
-    private string? ResolvePriceId(string planCode)
+    private string? ResolvePriceId(string planCode, string billingInterval)
     {
-        return planCode.Trim().ToUpperInvariant() switch
+        return (planCode.Trim().ToUpperInvariant(), billingInterval.Trim().ToUpperInvariant()) switch
         {
-            "STARTER" => _options.StarterPriceId,
-            "GROWTH" => _options.GrowthPriceId,
-            "ENTERPRISE" => _options.EnterprisePriceId,
-            _ => null
+            ("STARTER", "MONTHLY") => _options.StarterMonthlyPriceId,
+            ("STARTER", "YEARLY") => _options.StarterYearlyPriceId,
+            ("GROWTH", "MONTHLY") => _options.GrowthMonthlyPriceId,
+            ("GROWTH", "YEARLY") => _options.GrowthYearlyPriceId,
+            _ => $"Unsupported Stripe billing combination: {planCode} / {billingInterval}."
         };
     }
 }

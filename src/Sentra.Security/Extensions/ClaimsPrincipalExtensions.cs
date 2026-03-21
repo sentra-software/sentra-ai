@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
 namespace Sentra.Security.Extensions;
@@ -34,5 +35,15 @@ public static class ClaimsPrincipalExtensions
 
         string? rawValue = principal.FindFirstValue("tenant_id");
         return Guid.TryParse(rawValue, out Guid value) ? value : Guid.Empty;
+    }
+
+    public static string GetEmail(this ClaimsPrincipal principal)
+    {
+        ArgumentNullException.ThrowIfNull(principal);
+
+        return principal.FindFirst(JwtRegisteredClaimNames.Email)?.Value
+            ?? principal.FindFirst(ClaimTypes.Email)?.Value
+            ?? principal.FindFirst("email")?.Value
+            ?? string.Empty;
     }
 }

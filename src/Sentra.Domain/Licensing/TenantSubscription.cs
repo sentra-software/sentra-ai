@@ -107,6 +107,40 @@ public sealed class TenantSubscription : AggregateRoot<TenantSubscriptionId>
     }
 
     /// <summary>
+    /// Creates a new active paid tenant subscription.
+    /// </summary>
+    public static Result<TenantSubscription> CreateActive(
+        TenantId tenantId,
+        LicensePlanId licensePlanId,
+        DateTime startsAtUtc)
+    {
+        if (tenantId.Value == Guid.Empty)
+        {
+            return Result.Failure<TenantSubscription>(Error.Validation(
+                "licensing.subscription.tenant.required",
+                "Tenant identifier is required."));
+        }
+
+        if (licensePlanId.Value == Guid.Empty)
+        {
+            return Result.Failure<TenantSubscription>(Error.Validation(
+                "licensing.subscription.plan.required",
+                "License plan identifier is required."));
+        }
+
+        TenantSubscription subscription = new(
+            TenantSubscriptionId.New(),
+            tenantId,
+            licensePlanId,
+            SubscriptionStatus.Active,
+            startsAtUtc,
+            null,
+            null);
+
+        return Result.Success(subscription);
+    }
+
+    /// <summary>
     /// Activates the subscription.
     /// </summary>
     public void Activate()

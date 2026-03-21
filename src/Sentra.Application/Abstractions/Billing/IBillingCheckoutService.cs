@@ -14,5 +14,6 @@ public interface IBillingCheckoutService
         Guid tenantId,
         string email,
         string planCode,
+        string billingInterval,
         CancellationToken cancellationToken = default);
 }

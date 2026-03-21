@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Sentra.Api.Models;
@@ -37,7 +38,7 @@ public sealed class BillingController : ControllerBase
         CancellationToken cancellationToken)
     {
         Guid tenantId = User.GetTenantId();
-        string email = User.FindFirst("email")?.Value ?? string.Empty;
+        string email = User.GetEmail();
 
         if (tenantId == Guid.Empty)
         {
@@ -48,6 +49,7 @@ public sealed class BillingController : ControllerBase
             tenantId,
             email,
             request.PlanCode,
+            request.BillingInterval,
             cancellationToken);
 
         if (result.IsFailure)
