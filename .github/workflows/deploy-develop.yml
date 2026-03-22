@@ -65,7 +65,7 @@ jobs:
           host: ${{ vars.DEV_HOST }}
           username: ${{ vars.DEV_USERNAME }}
           key: ${{ vars.DEV_SSH_KEY }}
-          port: ${{ vars.DEV_PORT }}''
+          port: ${{ vars.DEV_PORT }}
           debug: true
           script: |
             echo "${{ vars.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ vars.GHCR_USERNAME }}" --password-stdin
