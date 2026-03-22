@@ -2,6 +2,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using Scalar.AspNetCore;
 using Sentra.AI.Orchestration;
 using Sentra.Api;
@@ -13,6 +14,10 @@ using Sentra.Security.Extensions;
 using Sentra.Security.Jwt;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+string publicApiBaseUrl =
+    builder.Configuration["App:PublicBaseUrl"]
+    ?? "http://api.sentra-software.nl";
 
 builder.Services
     .AddSentraApi()
@@ -140,9 +145,11 @@ WebApplication app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+
     app.MapScalarApiReference(options =>
     {
         options.Title = "Sentra API";
+        options.Servers = [new ScalarServer(publicApiBaseUrl)];
     });
 }
 
