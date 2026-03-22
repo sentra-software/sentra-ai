@@ -1,6 +1,7 @@
 using System.Text;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Scalar.AspNetCore;
@@ -9,6 +10,7 @@ using Sentra.Api;
 using Sentra.Application;
 using Sentra.Connectors.PostgreSql;
 using Sentra.Infrastructure;
+using Sentra.Infrastructure.Persistence;
 using Sentra.Security;
 using Sentra.Security.Extensions;
 using Sentra.Security.Jwt;
@@ -159,6 +161,12 @@ app.UseAuthorization();
 app.UseRateLimiter();
 
 app.MapControllers();
+
+using(IServiceScope scope = app.Services.CreateScope())
+{
+    SentraPlatformDbContext dbContext = scope.ServiceProvider.GetRequiredService<SentraPlatformDbContext>();
+    dbContext.Database.Migrate();
+}
 
 app.Run();
 
