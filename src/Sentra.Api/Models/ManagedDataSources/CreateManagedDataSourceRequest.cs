@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using Sentra.Domain.DataSources;
+
 namespace Sentra.Api.Models.ManagedDataSources;
 
 /// <summary>
@@ -13,7 +16,8 @@ public sealed class CreateManagedDataSourceRequest
     /// <summary>
     /// Gets or sets the data source type.
     /// </summary>
-    public string DataSourceType { get; set; } = string.Empty;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public DataSourceType DataSourceType { get; set; }
 
     /// <summary>
     /// Gets or sets the plaintext connection string.

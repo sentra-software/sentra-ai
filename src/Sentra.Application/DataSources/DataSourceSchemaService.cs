@@ -18,13 +18,9 @@ public sealed class DataSourceSchemaService : IDataSourceSchemaService
     /// Initializes a new instance of the <see cref="DataSourceSchemaService"/> class.
     /// </summary>
     /// <param name="connectorRegistry">The connector registry.</param>
-    /// <exception cref="ArgumentNullException">
-    /// Thrown when <paramref name="connectorRegistry"/> is <see langword="null"/>.
-    /// </exception>
     public DataSourceSchemaService(IConnectorRegistry connectorRegistry)
     {
         ArgumentNullException.ThrowIfNull(connectorRegistry);
-
         _connectorRegistry = connectorRegistry;
     }
 
@@ -43,26 +39,30 @@ public sealed class DataSourceSchemaService : IDataSourceSchemaService
         string connectionString,
         CancellationToken cancellationToken = default)
     {
-        Result? connectionStringValidationResult = ValidateConnectionString(connectionString);
+        Result connectionStringValidationResult = ValidateConnectionString(connectionString);
+
         if (connectionStringValidationResult.IsFailure)
         {
             return Result.Failure<IReadOnlyCollection<TableSchema>>(connectionStringValidationResult.Error);
         }
 
-        Result<ConnectorType>? connectorTypeResult = MapToConnectorType(dataSourceType);
+        Result<ConnectorType> connectorTypeResult = MapToConnectorType(dataSourceType);
+
         if (connectorTypeResult.IsFailure)
         {
             return Result.Failure<IReadOnlyCollection<TableSchema>>(connectorTypeResult.Error);
         }
 
-        Result<IDataConnector>? connectorResult = _connectorRegistry.GetConnector(connectorTypeResult.ValueOrThrow());
+        Result<IDataConnector> connectorResult = _connectorRegistry.GetConnector(connectorTypeResult.ValueOrThrow());
+
         if (connectorResult.IsFailure)
         {
             return Result.Failure<IReadOnlyCollection<TableSchema>>(connectorResult.Error);
         }
 
-        IDataConnector? connector = connectorResult.ValueOrThrow();
-        IReadOnlyCollection<TableSchema>? schema = await connector.ReadSchemaAsync(
+        IDataConnector connector = connectorResult.ValueOrThrow();
+
+        IReadOnlyCollection<TableSchema> schema = await connector.ReadSchemaAsync(
             connectionString.Trim(),
             cancellationToken);
 
@@ -92,6 +92,7 @@ public sealed class DataSourceSchemaService : IDataSourceSchemaService
             DataSourceType.PostgreSql => Result.Success(ConnectorType.PostgreSql),
             DataSourceType.SqlServer => Result.Success(ConnectorType.SqlServer),
             DataSourceType.MySql => Result.Success(ConnectorType.MySql),
+            DataSourceType.Sqlite => Result.Success(ConnectorType.Sqlite),
             _ => Result.Failure<ConnectorType>(
                 Error.Failure(
                     "datasources.type.unsupported",

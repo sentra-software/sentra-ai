@@ -18,5 +18,10 @@ public enum DataSourceType
     /// <summary>
     /// MySQL database.
     /// </summary>
-    MySql = 3
+    MySql = 3,
+
+    /// <summary>
+    /// SQLite database.
+    /// </summary>
+    Sqlite = 4
 }

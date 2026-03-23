@@ -8,12 +8,15 @@ using Scalar.AspNetCore;
 using Sentra.AI.Orchestration;
 using Sentra.Api;
 using Sentra.Application;
+using Sentra.Connectors.MySql;
 using Sentra.Connectors.PostgreSql;
+using Sentra.Connectors.Sqlite;
 using Sentra.Infrastructure;
 using Sentra.Infrastructure.Persistence;
 using Sentra.Security;
 using Sentra.Security.Extensions;
 using Sentra.Security.Jwt;
+
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -25,7 +28,9 @@ builder.Services
     .AddSentraApi()
     .AddSentraApplication()
     .AddSentraAiOrchestration(builder.Configuration)
-    .AddSentraPostgreSqlConnector();
+    .AddSentraPostgreSqlConnector()
+    .AddSentraMySqlConnector()
+    .AddSentraSqliteConnector();
 
 builder.Services.AddSentraInfrastructure(builder.Configuration);
 builder.Services.AddSentraSecurity(builder.Configuration);

@@ -91,6 +91,7 @@ public sealed class DataSourceConnectionService : IDataSourceConnectionService
             DataSourceType.PostgreSql => Result.Success(ConnectorType.PostgreSql),
             DataSourceType.SqlServer => Result.Success(ConnectorType.SqlServer),
             DataSourceType.MySql => Result.Success(ConnectorType.MySql),
+            DataSourceType.Sqlite => Result.Success(ConnectorType.Sqlite),
             _ => Result.Failure<ConnectorType>(
                 Error.Failure(
                     "datasources.type.unsupported",

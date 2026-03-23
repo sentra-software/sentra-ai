@@ -136,8 +136,8 @@ public sealed class ManagedDataSourcesController : ControllerBase
     [ProducesResponseType(typeof(ManagedDataSourceResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create(
-        [FromBody] CreateManagedDataSourceRequest request,
-        CancellationToken cancellationToken)
+    [FromBody] CreateManagedDataSourceRequest request,
+    CancellationToken cancellationToken)
     {
         Guid tenantIdValue = User.GetTenantId();
         if (tenantIdValue == Guid.Empty)
@@ -146,19 +146,17 @@ public sealed class ManagedDataSourcesController : ControllerBase
         }
 
         Result licenseResult = await _licenseService.EnsureManagedDataSourceCreationAllowedAsync(
-            tenantIdValue, cancellationToken
-        );
+            tenantIdValue,
+            cancellationToken);
 
-        if(licenseResult.IsFailure)
+        if (licenseResult.IsFailure)
         {
             return BadRequest(new ApiErrorResponse(
                 licenseResult.Error.Code,
-                licenseResult.Error.Message
-            ));
+                licenseResult.Error.Message));
         }
 
         if (string.IsNullOrWhiteSpace(request.Name) ||
-            string.IsNullOrWhiteSpace(request.DataSourceType) ||
             string.IsNullOrWhiteSpace(request.ConnectionString))
         {
             return BadRequest(new ApiErrorResponse(
@@ -166,12 +164,7 @@ public sealed class ManagedDataSourcesController : ControllerBase
                 "Name, data source type and connection string are required."));
         }
 
-        if (!Enum.TryParse(request.DataSourceType, true, out DataSourceType dataSourceType))
-        {
-            return BadRequest(new ApiErrorResponse(
-                "managed_data_sources.invalid_type",
-                "The specified data source type is invalid."));
-        }
+        DataSourceType dataSourceType = request.DataSourceType;
 
         Result<ConnectionTestResult> connectionTest = await _connectionService.TestConnectionAsync(
             dataSourceType,

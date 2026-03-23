@@ -1,4 +1,5 @@
 using Sentra.Connectors.Abstractions.Schema;
+using Sentra.Domain.DataSources;
 using Sentra.SharedKernel.Results;
 
 namespace Sentra.AI.Abstractions.Sql;
@@ -11,6 +12,7 @@ public interface ISqlGenerationService
     /// <summary>
     /// Generates a SQL query for the provided question and schema.
     /// </summary>
+    /// <param name="dataSourceType">The target data source type.</param>
     /// <param name="question">The user question.</param>
     /// <param name="tables">The available schema tables.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
@@ -19,6 +21,7 @@ public interface ISqlGenerationService
     /// or a failed result describing the error.
     /// </returns>
     Task<Result<string>> GenerateSqlAsync(
+        DataSourceType dataSourceType,
         string question,
         IReadOnlyCollection<TableSchema> tables,
         CancellationToken cancellationToken = default);

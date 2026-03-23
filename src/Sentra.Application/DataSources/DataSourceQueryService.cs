@@ -20,9 +20,6 @@ public sealed class DataSourceQueryService : IDataSourceQueryService
     /// </summary>
     /// <param name="connectorRegistry">The connector registry.</param>
     /// <param name="querySafetyValidator">The query safety validator.</param>
-    /// <exception cref="ArgumentNullException">
-    /// Thrown when <paramref name="connectorRegistry"/> or <paramref name="querySafetyValidator"/> is <see langword="null"/>.
-    /// </exception>
     public DataSourceQueryService(
         IConnectorRegistry connectorRegistry,
         IQuerySafetyValidator querySafetyValidator)
@@ -51,32 +48,37 @@ public sealed class DataSourceQueryService : IDataSourceQueryService
         string query,
         CancellationToken cancellationToken = default)
     {
-        Result? connectionStringValidationResult = ValidateConnectionString(connectionString);
+        Result connectionStringValidationResult = ValidateConnectionString(connectionString);
+
         if (connectionStringValidationResult.IsFailure)
         {
             return Result.Failure<QueryExecutionResult>(connectionStringValidationResult.Error);
         }
 
-        Result? querySafetyValidationResult = _querySafetyValidator.Validate(query);
+        Result querySafetyValidationResult = _querySafetyValidator.Validate(query);
+
         if (querySafetyValidationResult.IsFailure)
         {
             return Result.Failure<QueryExecutionResult>(querySafetyValidationResult.Error);
         }
 
-        Result<ConnectorType>? connectorTypeResult = MapToConnectorType(dataSourceType);
+        Result<ConnectorType> connectorTypeResult = MapToConnectorType(dataSourceType);
+
         if (connectorTypeResult.IsFailure)
         {
             return Result.Failure<QueryExecutionResult>(connectorTypeResult.Error);
         }
 
-        Result<IDataConnector>? connectorResult = _connectorRegistry.GetConnector(connectorTypeResult.ValueOrThrow());
+        Result<IDataConnector> connectorResult = _connectorRegistry.GetConnector(connectorTypeResult.ValueOrThrow());
+
         if (connectorResult.IsFailure)
         {
             return Result.Failure<QueryExecutionResult>(connectorResult.Error);
         }
 
-        IDataConnector? connector = connectorResult.ValueOrThrow();
-        QueryExecutionResult? executionResult = await connector.ExecuteQueryAsync(
+        IDataConnector connector = connectorResult.ValueOrThrow();
+
+        QueryExecutionResult executionResult = await connector.ExecuteQueryAsync(
             connectionString.Trim(),
             query.Trim(),
             cancellationToken);
@@ -107,6 +109,7 @@ public sealed class DataSourceQueryService : IDataSourceQueryService
             DataSourceType.PostgreSql => Result.Success(ConnectorType.PostgreSql),
             DataSourceType.SqlServer => Result.Success(ConnectorType.SqlServer),
             DataSourceType.MySql => Result.Success(ConnectorType.MySql),
+            DataSourceType.Sqlite => Result.Success(ConnectorType.Sqlite),
             _ => Result.Failure<ConnectorType>(
                 Error.Failure(
                     "datasources.type.unsupported",

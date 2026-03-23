@@ -55,6 +55,7 @@ public sealed class PreviewQuestionService : IPreviewQuestionService
         }
 
         Result<string> sqlResult = await _sqlGenerationService.GenerateSqlAsync(
+            dataSourceType,
             question.Trim(),
             schemaResult.ValueOrThrow(),
             cancellationToken);

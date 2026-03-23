@@ -117,6 +117,7 @@ public sealed class AskQuestionService : IAskQuestionService
         }
 
         Result<string> sqlResult = await _sqlGenerationService.GenerateSqlAsync(
+            dataSourceType,
             trimmedQuestion,
             schemaResult.ValueOrThrow(),
             cancellationToken);

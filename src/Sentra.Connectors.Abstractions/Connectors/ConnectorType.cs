@@ -18,5 +18,10 @@ public enum ConnectorType
     /// <summary>
     /// MySQL connector.
     /// </summary>
-    MySql = 3
+    MySql = 3,
+
+    /// <summary>
+    /// SQLite connector.
+    /// </summary>
+    Sqlite = 4
 }

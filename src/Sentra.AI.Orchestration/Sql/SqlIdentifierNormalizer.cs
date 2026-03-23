@@ -1,11 +1,12 @@
 using System.Text.RegularExpressions;
 using Sentra.AI.Abstractions.Sql;
 using Sentra.Connectors.Abstractions.Schema;
+using Sentra.Domain.DataSources;
 
 namespace Sentra.AI.Orchestration.Sql;
 
 /// <summary>
-/// Represents a schema-aware SQL identifier normalizer for PostgreSQL table references.
+/// Represents a schema-aware SQL identifier normalizer.
 /// </summary>
 public sealed class SqlIdentifierNormalizer : ISqlIdentifierNormalizer
 {
@@ -17,10 +18,12 @@ public sealed class SqlIdentifierNormalizer : ISqlIdentifierNormalizer
     /// <summary>
     /// Normalizes table identifiers in the provided SQL query using the available schema metadata.
     /// </summary>
+    /// <param name="dataSourceType">The target data source type.</param>
     /// <param name="sql">The generated SQL query.</param>
     /// <param name="tables">The available schema tables.</param>
     /// <returns>The normalized SQL query.</returns>
     public string Normalize(
+        DataSourceType dataSourceType,
         string sql,
         IReadOnlyCollection<TableSchema> tables)
     {
@@ -29,42 +32,59 @@ public sealed class SqlIdentifierNormalizer : ISqlIdentifierNormalizer
             return sql;
         }
 
-        Dictionary<string, TableSchema>? tableMap = tables.ToDictionary(
+        Dictionary<string, TableSchema> tableMap = tables.ToDictionary(
             table => $"{table.Schema}.{table.Name}".ToLowerInvariant(),
             table => table);
 
-        Dictionary<string, TableSchema[]>? tableNameMap = tables
+        Dictionary<string, TableSchema[]> tableNameMap = tables
             .GroupBy(table => table.Name.ToLowerInvariant())
             .ToDictionary(group => group.Key, group => group.ToArray());
 
-        string? normalizedSql = FromJoinRegex.Replace(sql, match =>
+        string normalizedSql = FromJoinRegex.Replace(sql, match =>
         {
-            string? keyword = match.Groups["keyword"].Value;
+            string keyword = match.Groups["keyword"].Value;
             string? rawSchema = match.Groups["schema"].Success
                 ? match.Groups["schema"].Value
                 : null;
-            string? rawTable = match.Groups["table"].Value;
+            string rawTable = match.Groups["table"].Value;
 
             if (!string.IsNullOrWhiteSpace(rawSchema))
             {
-                string? qualifiedLookupKey = $"{rawSchema}.{rawTable}".ToLowerInvariant();
+                string qualifiedLookupKey = $"{rawSchema}.{rawTable}".ToLowerInvariant();
 
-                if (tableMap.TryGetValue(qualifiedLookupKey, out var exactQualifiedTable))
+                if (tableMap.TryGetValue(qualifiedLookupKey, out TableSchema? exactQualifiedTable))
                 {
-                    return $"{keyword} {exactQualifiedTable.Schema}.\"{exactQualifiedTable.Name}\"";
+                    return $"{keyword} {FormatQualifiedTableName(dataSourceType, exactQualifiedTable)}";
                 }
             }
 
-            if (tableNameMap.TryGetValue(rawTable.ToLowerInvariant(), out var candidates) &&
+            if (tableNameMap.TryGetValue(rawTable.ToLowerInvariant(), out TableSchema[]? candidates) &&
                 candidates.Length == 1)
             {
-                TableSchema? exactTable = candidates[0];
-                return $"{keyword} {exactTable.Schema}.\"{exactTable.Name}\"";
+                TableSchema exactTable = candidates[0];
+                return $"{keyword} {FormatQualifiedTableName(dataSourceType, exactTable)}";
             }
 
             return match.Value;
         });
 
         return normalizedSql;
+    }
+
+    /// <summary>
+    /// Formats a qualified table name for the selected dialect.
+    /// </summary>
+    /// <param name="dataSourceType">The data source type.</param>
+    /// <param name="table">The table schema metadata.</param>
+    /// <returns>The formatted qualified table name.</returns>
+    private static string FormatQualifiedTableName(DataSourceType dataSourceType, TableSchema table)
+    {
+        return dataSourceType switch
+        {
+            DataSourceType.MySql => $"`{table.Schema}`.`{table.Name}`",
+            DataSourceType.Sqlite => $"\"{table.Name}\"",
+            DataSourceType.SqlServer => $"[{table.Schema}].[{table.Name}]",
+            _ => $@"{table.Schema}.""{table.Name}"""
+        };
     }
 }

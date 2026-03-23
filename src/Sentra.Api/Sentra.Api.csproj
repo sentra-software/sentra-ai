@@ -31,6 +31,7 @@
     <ProjectReference Include="..\Sentra.Connectors.PostgreSql\Sentra.Connectors.PostgreSql.csproj" />
     <ProjectReference Include="..\Sentra.Connectors.SqlServer\Sentra.Connectors.SqlServer.csproj" />
     <ProjectReference Include="..\Sentra.Connectors.MySql\Sentra.Connectors.MySql.csproj" />
+    <ProjectReference Include="..\Sentra.Connectors.Sqlite\Sentra.Connectors.Sqlite.csproj" />
     <ProjectReference Include="..\Sentra.Security\Sentra.Security.csproj" />
     <ProjectReference Include="..\Sentra.Licensing\Sentra.Licensing.csproj" />
     <ProjectReference Include="..\Sentra.Observability\Sentra.Observability.csproj" />
