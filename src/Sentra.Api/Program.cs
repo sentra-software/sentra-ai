@@ -11,6 +11,7 @@ using Sentra.Application;
 using Sentra.Connectors.MySql;
 using Sentra.Connectors.PostgreSql;
 using Sentra.Connectors.Sqlite;
+using Sentra.Connectors.SqlServer;
 using Sentra.Infrastructure;
 using Sentra.Infrastructure.Persistence;
 using Sentra.Security;
@@ -29,6 +30,7 @@ builder.Services
     .AddSentraApplication()
     .AddSentraAiOrchestration(builder.Configuration)
     .AddSentraPostgreSqlConnector()
+    .AddSentraSqlServerConnector()
     .AddSentraMySqlConnector()
     .AddSentraSqliteConnector();
 
