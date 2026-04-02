@@ -169,35 +169,38 @@ app.UseRateLimiter();
 
 app.MapControllers();
 
-using (IServiceScope scope = app.Services.CreateScope())
+if(!app.Environment.IsEnvironment("Testing"))
 {
-    IServiceProvider services = scope.ServiceProvider;
-    ILogger<Program> logger = services.GetRequiredService<ILogger<Program>>();
-
-    try
+    using (IServiceScope scope = app.Services.CreateScope())
     {
-        SentraPlatformDbContext dbContext = services.GetRequiredService<SentraPlatformDbContext>();
+        IServiceProvider services = scope.ServiceProvider;
+        ILogger<Program> logger = services.GetRequiredService<ILogger<Program>>();
 
-        string connectionString = dbContext.Database.GetConnectionString() ?? "<null>";
-        logger.LogInformation("Applying migrations for SentraPlatformDbContext...");
-        logger.LogInformation("Connection string: {ConnectionString}", connectionString);
-
-        IEnumerable<string> pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync();
-        logger.LogInformation("Pending migrations count: {Count}", pendingMigrations.Count());
-
-        foreach (string migration in pendingMigrations)
+        try
         {
-            logger.LogInformation("Pending migration: {Migration}", migration);
-        }
+            SentraPlatformDbContext dbContext = services.GetRequiredService<SentraPlatformDbContext>();
 
-        await dbContext.Database.MigrateAsync();
-        logger.LogInformation("Migrations applied successfully.");
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "An error occurred while applying database migrations.");
-        throw;
-    }
+            string connectionString = dbContext.Database.GetConnectionString() ?? "<null>";
+            logger.LogInformation("Applying migrations for SentraPlatformDbContext...");
+            logger.LogInformation("Connection string: {ConnectionString}", connectionString);
+
+            IEnumerable<string> pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync();
+            logger.LogInformation("Pending migrations count: {Count}", pendingMigrations.Count());
+
+            foreach (string migration in pendingMigrations)
+            {
+                logger.LogInformation("Pending migration: {Migration}", migration);
+            }
+
+            await dbContext.Database.MigrateAsync();
+            logger.LogInformation("Migrations applied successfully.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "An error occurred while applying database migrations.");
+            throw;
+        }
+    } 
 }
 
 app.Run();
