@@ -1,25 +1,25 @@
-using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
+using Xunit;
+
 using Sentra.Api.Controllers;
 
 namespace Sentra.UnitTests.Api.Controllers;
 
 /// <summary>
-/// Contains unit tests for <see cref="SystemController"/>.
+/// Contains tests for <see cref="SystemController"/>.
 /// </summary>
 public sealed class SystemControllerTests
 {
-    /// <summary>
-    /// Verifies that <see cref="SystemController.GetRoot"/> returns a success response.
-    /// </summary>
     [Fact]
-    public void GetRoot_Should_Return_Ok_With_Status_Message()
+    public void GetRoot_ShouldReturnOk_WithExpectedMessage()
     {
-        SystemController? controller = new SystemController();
+        SystemController controller = new();
 
-        IActionResult? result = controller.GetRoot();
+        IActionResult actionResult = controller.GetRoot();
 
-        OkObjectResult? okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        okResult.Value.Should().Be("Sentra API is running.");
+        OkObjectResult ok = Assert.IsType<OkObjectResult>(actionResult);
+        string message = Assert.IsType<string>(ok.Value);
+
+        Assert.Equal("Sentra API is running.", message);
     }
 }

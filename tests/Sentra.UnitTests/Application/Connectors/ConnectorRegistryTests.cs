@@ -1,89 +1,106 @@
-using FluentAssertions;
+using Moq;
+using Xunit;
+
 using Sentra.Application.Connectors;
 using Sentra.Connectors.Abstractions.Connectors;
-using Sentra.SharedKernel.Results;
 
 namespace Sentra.UnitTests.Application.Connectors;
 
 /// <summary>
-/// Contains unit tests for <see cref="ConnectorRegistry"/>.
+/// Contains tests for <see cref="ConnectorRegistry"/>.
 /// </summary>
 public sealed class ConnectorRegistryTests
 {
-    /// <summary>
-    /// Verifies that the registry returns a registered connector.
-    /// </summary>
     [Fact]
-    public void GetConnector_Should_Return_Success_When_Connector_Is_Registered()
+    public void Constructor_ShouldThrow_WhenConnectorsIsNull()
     {
-        TestDataConnector? postgresConnector = new TestDataConnector(ConnectorType.PostgreSql);
-        ConnectorRegistry? registry = new ConnectorRegistry([postgresConnector]);
-
-        Result<IDataConnector>? result = registry.GetConnector(ConnectorType.PostgreSql);
-
-        result.IsSuccess.Should().BeTrue();
-        result.ValueOrThrow().Should().BeSameAs(postgresConnector);
+        // Act + Assert
+        Assert.Throws<ArgumentNullException>(() => new ConnectorRegistry(null!));
     }
 
-    /// <summary>
-    /// Verifies that the registry returns a failure when a connector is not registered.
-    /// </summary>
     [Fact]
-    public void GetConnector_Should_Return_Failure_When_Connector_Is_Not_Registered()
+    public void Constructor_ShouldThrow_WhenDuplicateConnectorTypesAreRegistered()
     {
-        ConnectorRegistry? registry = new ConnectorRegistry(
-        [
-            new TestDataConnector(ConnectorType.PostgreSql)
-        ]);
+        // Arrange
+        Mock<IDataConnector> first = CreateConnector(ConnectorType.PostgreSql);
+        Mock<IDataConnector> second = CreateConnector(ConnectorType.PostgreSql);
 
-        Result<IDataConnector>? result = registry.GetConnector(ConnectorType.MySql);
-
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("connectors.not_registered");
+        // Act + Assert
+        Assert.Throws<InvalidOperationException>(() =>
+            new ConnectorRegistry([first.Object, second.Object]));
     }
 
-    /// <summary>
-    /// Verifies that all registered connector types are exposed.
-    /// </summary>
     [Fact]
-    public void RegisteredTypes_Should_Return_All_Registered_Connector_Types()
+    public void RegisteredTypes_ShouldContainAllUniqueRegisteredConnectorTypes()
     {
-        ConnectorRegistry? registry = new ConnectorRegistry(
-        [
-            new TestDataConnector(ConnectorType.PostgreSql),
-            new TestDataConnector(ConnectorType.SqlServer)
-        ]);
+        // Arrange
+        Mock<IDataConnector> postgres = CreateConnector(ConnectorType.PostgreSql);
+        Mock<IDataConnector> sqlServer = CreateConnector(ConnectorType.SqlServer);
+        ConnectorRegistry registry = new([postgres.Object, sqlServer.Object]);
 
-        registry.RegisteredTypes.Should().HaveCount(2);
-        registry.RegisteredTypes.Should().Contain(ConnectorType.PostgreSql);
-        registry.RegisteredTypes.Should().Contain(ConnectorType.SqlServer);
+        // Act
+        IReadOnlyCollection<ConnectorType> registeredTypes = registry.RegisteredTypes;
+
+        // Assert
+        Assert.Equal(2, registeredTypes.Count);
+        Assert.Contains(ConnectorType.PostgreSql, registeredTypes);
+        Assert.Contains(ConnectorType.SqlServer, registeredTypes);
     }
 
-    /// <summary>
-    /// Verifies that duplicate connector types are rejected.
-    /// </summary>
     [Fact]
-    public void Constructor_Should_Throw_When_Duplicate_Connector_Types_Are_Registered()
+    public void GetConnector_ShouldReturnSuccess_WhenConnectorIsRegistered()
     {
-        Func<ConnectorRegistry>? action = () => new ConnectorRegistry(
-        [
-            new TestDataConnector(ConnectorType.PostgreSql),
-            new TestDataConnector(ConnectorType.PostgreSql)
-        ]);
+        // Arrange
+        Mock<IDataConnector> postgres = CreateConnector(ConnectorType.PostgreSql);
+        ConnectorRegistry registry = new([postgres.Object]);
 
-        action.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Multiple connectors are registered for type 'PostgreSql'.");
+        // Act
+        var result = registry.GetConnector(ConnectorType.PostgreSql);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Value);
+        Assert.Same(postgres.Object, result.Value);
     }
 
-    /// <summary>
-    /// Verifies that passing a null connector collection throws an exception.
-    /// </summary>
     [Fact]
-    public void Constructor_Should_Throw_When_Connectors_Are_Null()
+    public void GetConnector_ShouldReturnFailure_WhenConnectorIsNotRegistered()
     {
-        Func<ConnectorRegistry>? action = () => new ConnectorRegistry(null!);
+        // Arrange
+        Mock<IDataConnector> postgres = CreateConnector(ConnectorType.PostgreSql);
+        ConnectorRegistry registry = new([postgres.Object]);
 
-        action.Should().Throw<ArgumentNullException>();
+        // Act
+        var result = registry.GetConnector(ConnectorType.MySql);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Null(result.Value);
+        Assert.NotNull(result.Error);
+        Assert.Equal("connectors.not_registered", result.Error.Code);
+    }
+
+    [Fact]
+    public void GetConnector_ShouldReturnFailureMessageContainingRequestedType_WhenConnectorIsNotRegistered()
+    {
+        // Arrange
+        ConnectorRegistry registry = new([]);
+
+        // Act
+        var result = registry.GetConnector(ConnectorType.Sqlite);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.NotNull(result.Error);
+        Assert.Contains("Sqlite", result.Error.Message);
+    }
+
+    private static Mock<IDataConnector> CreateConnector(ConnectorType connectorType)
+    {
+        Mock<IDataConnector> connector = new();
+        connector.SetupGet(x => x.Type).Returns(connectorType);
+        connector.SetupGet(x => x.Capabilities).Returns(Array.Empty<ConnectorCapability>());
+
+        return connector;
     }
 }

@@ -416,4 +416,4 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
-src/Sentra.Api/appsettings.Development.json
+src\Sentra.Api\appsettings.Development.json

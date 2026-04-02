@@ -13,11 +13,12 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Testcontainers" Version="4.11.0" />
     <PackageReference Include="FluentAssertions" Version="8.8.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="Moq" Version="4.20.72" />
     <PackageReference Include="xunit" Version="2.9.2" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -27,16 +28,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sentra.Api\Sentra.Api.csproj" />
     <ProjectReference Include="..\..\src\Sentra.Application\Sentra.Application.csproj" />
-    <ProjectReference Include="..\..\src\Sentra.Contracts\Sentra.Contracts.csproj" />
-    <ProjectReference Include="..\..\src\Sentra.Domain\Sentra.Domain.csproj" />
     <ProjectReference Include="..\..\src\Sentra.Infrastructure\Sentra.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Sentra.Security\Sentra.Security.csproj" />
-    <ProjectReference Include="..\..\src\Sentra.SharedKernel\Sentra.SharedKernel.csproj" />
-    <ProjectReference Include="..\..\src\Sentra.Observability\Sentra.Observability.csproj" />
-    <ProjectReference Include="..\..\src\Sentra.AI.Abstractions\Sentra.AI.Abstractions.csproj" />
-    <ProjectReference Include="..\..\src\Sentra.AI.Orchestration\Sentra.AI.Orchestration.csproj" />
-    <ProjectReference Include="..\..\src\Sentra.AI.Prompts\Sentra.AI.Prompts.csproj" />
-    <ProjectReference Include="..\..\src\Sentra.Connectors.Abstractions\Sentra.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Sentra.Contracts\Sentra.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Sentra.Connectors.PostgreSql\Sentra.Connectors.PostgreSql.csproj" />
     <ProjectReference Include="..\..\src\Sentra.Connectors.MySql\Sentra.Connectors.MySql.csproj" />
     <ProjectReference Include="..\..\src\Sentra.Connectors.SqlServer\Sentra.Connectors.SqlServer.csproj" />

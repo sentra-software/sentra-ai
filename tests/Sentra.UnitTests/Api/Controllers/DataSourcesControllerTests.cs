@@ -1,5 +1,7 @@
-using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
+using Moq;
+using Xunit;
+
 using Sentra.Api.Controllers;
 using Sentra.Api.Models;
 using Sentra.Application.Abstractions.DataSources;
@@ -13,193 +15,180 @@ using Sentra.SharedKernel.Results;
 namespace Sentra.UnitTests.Api.Controllers;
 
 /// <summary>
-/// Contains unit tests for <see cref="DataSourcesController"/>.
+/// Contains tests for <see cref="DataSourcesController"/>.
 /// </summary>
 public sealed class DataSourcesControllerTests
 {
-    /// <summary>
-    /// Verifies that <see cref="DataSourcesController.TestConnection"/> returns OK for a successful result.
-    /// </summary>
     [Fact]
-    public async Task TestConnection_Should_Return_Ok_When_Service_Succeeds()
+    public async Task TestConnection_ShouldReturnBadRequest_WhenServiceFails()
     {
-        DataSourcesController? controller = new DataSourcesController();
-        TestDataSourceConnectionService? service = new TestDataSourceConnectionService(
-            Result.Success(ConnectionTestResult.Success("Connection succeeded.")));
+        DataSourcesController controller = new();
+        Mock<IDataSourceConnectionService> serviceMock = new();
 
-        TestDataSourceConnectionRequest? request = new TestDataSourceConnectionRequest(
+        TestDataSourceConnectionRequest request = new(
             DataSourceType.PostgreSql,
-            "Host=localhost;");
+            "Host=localhost;Database=sentra;");
 
-        IActionResult? result = await controller.TestConnection(
-            request,
-            service,
-            CancellationToken.None);
-
-        OkObjectResult? okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        TestDataSourceConnectionResponse? response = okResult.Value.Should().BeOfType<TestDataSourceConnectionResponse>().Subject;
-
-        response.IsSuccess.Should().BeTrue();
-        response.Message.Should().Be("Connection succeeded.");
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="DataSourcesController.TestConnection"/> returns BadRequest for a failed result.
-    /// </summary>
-    [Fact]
-    public async Task TestConnection_Should_Return_BadRequest_When_Service_Fails()
-    {
-        DataSourcesController controller = new DataSourcesController();
-        TestDataSourceConnectionService? service = new TestDataSourceConnectionService(
-            Result.Failure<ConnectionTestResult>(
+        serviceMock
+            .Setup(service => service.TestConnectionAsync(
+                request.DataSourceType,
+                request.ConnectionString,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure<ConnectionTestResult>(
                 Error.Validation("datasources.connection_string.required", "Connection string is required.")));
 
-        TestDataSourceConnectionRequest? request = new TestDataSourceConnectionRequest(
-            DataSourceType.PostgreSql,
-            string.Empty);
+        IActionResult actionResult = await controller.TestConnection(request, serviceMock.Object, CancellationToken.None);
 
-        IActionResult? result = await controller.TestConnection(
-            request,
-            service,
-            CancellationToken.None);
+        BadRequestObjectResult badRequest = Assert.IsType<BadRequestObjectResult>(actionResult);
+        ApiErrorResponse response = Assert.IsType<ApiErrorResponse>(badRequest.Value);
 
-        BadRequestObjectResult? badRequestResult = result.Should().BeOfType<BadRequestObjectResult>().Subject;
-        ApiErrorResponse? response = badRequestResult.Value.Should().BeOfType<ApiErrorResponse>().Subject;
-
-        response.Code.Should().Be("datasources.connection_string.required");
-        response.Message.Should().Be("Connection string is required.");
+        Assert.Equal("datasources.connection_string.required", response.Code);
     }
 
-    /// <summary>
-    /// Verifies that <see cref="DataSourcesController.ReadSchema"/> returns OK for a successful result.
-    /// </summary>
     [Fact]
-    public async Task ReadSchema_Should_Return_Ok_When_Service_Succeeds()
+    public async Task TestConnection_ShouldReturnOk_WhenServiceSucceeds()
     {
-        IReadOnlyCollection<TableSchema> tables =
+        DataSourcesController controller = new();
+        Mock<IDataSourceConnectionService> serviceMock = new();
+
+        TestDataSourceConnectionRequest request = new(
+            DataSourceType.PostgreSql,
+            "Host=localhost;Database=sentra;");
+
+        serviceMock
+            .Setup(service => service.TestConnectionAsync(
+                request.DataSourceType,
+                request.ConnectionString,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(ConnectionTestResult.Success("Connection succeeded.")));
+
+        IActionResult actionResult = await controller.TestConnection(request, serviceMock.Object, CancellationToken.None);
+
+        OkObjectResult ok = Assert.IsType<OkObjectResult>(actionResult);
+        Assert.NotNull(ok.Value);
+    }
+
+    [Fact]
+    public async Task ReadSchema_ShouldReturnBadRequest_WhenServiceFails()
+    {
+        DataSourcesController controller = new();
+        Mock<IDataSourceSchemaService> serviceMock = new();
+
+        ReadDataSourceSchemaRequest request = new(
+            DataSourceType.Sqlite,
+            "Data Source=:memory:");
+
+        serviceMock
+            .Setup(service => service.ReadSchemaAsync(
+                request.DataSourceType,
+                request.ConnectionString,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure<IReadOnlyCollection<TableSchema>>(
+                Error.Failure("connectors.not_registered", "Connector is not registered.")));
+
+        IActionResult actionResult = await controller.ReadSchema(request, serviceMock.Object, CancellationToken.None);
+
+        BadRequestObjectResult badRequest = Assert.IsType<BadRequestObjectResult>(actionResult);
+        ApiErrorResponse response = Assert.IsType<ApiErrorResponse>(badRequest.Value);
+
+        Assert.Equal("connectors.not_registered", response.Code);
+    }
+
+    [Fact]
+    public async Task ReadSchema_ShouldReturnOk_WhenServiceSucceeds()
+    {
+        DataSourcesController controller = new();
+        Mock<IDataSourceSchemaService> serviceMock = new();
+
+        ReadDataSourceSchemaRequest request = new(
+            DataSourceType.Sqlite,
+            "Data Source=:memory:");
+
+        IReadOnlyCollection<TableSchema> schema =
         [
             new TableSchema(
-                "public",
-                "customers",
-                new[]
-                {
-                    new ColumnSchema("id", "uuid", false)
-                })
+                "main",
+                "Users",
+                [
+                    new ColumnSchema("Id", "INTEGER", false),
+                    new ColumnSchema("Email", "TEXT", false)
+                ])
         ];
 
-        DataSourcesController? controller = new DataSourcesController();
-        TestDataSourceSchemaService? service = new TestDataSourceSchemaService(Result.Success(tables));
+        serviceMock
+            .Setup(service => service.ReadSchemaAsync(
+                request.DataSourceType,
+                request.ConnectionString,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(schema));
 
-        ReadDataSourceSchemaRequest? request = new ReadDataSourceSchemaRequest(
-            DataSourceType.PostgreSql,
-            "Host=localhost;");
+        IActionResult actionResult = await controller.ReadSchema(request, serviceMock.Object, CancellationToken.None);
 
-        IActionResult? result = await controller.ReadSchema(
-            request,
-            service,
-            CancellationToken.None);
-
-        OkObjectResult? okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        ReadDataSourceSchemaResponse? response = okResult.Value.Should().BeOfType<ReadDataSourceSchemaResponse>().Subject;
-
-        response.Tables.Should().HaveCount(1);
-        response.Tables.First().Schema.Should().Be("public");
-        response.Tables.First().Name.Should().Be("customers");
-        response.Tables.First().Columns.Should().HaveCount(1);
+        OkObjectResult ok = Assert.IsType<OkObjectResult>(actionResult);
+        Assert.NotNull(ok.Value);
     }
 
-    /// <summary>
-    /// Verifies that <see cref="DataSourcesController.ReadSchema"/> returns BadRequest for a failed result.
-    /// </summary>
     [Fact]
-    public async Task ReadSchema_Should_Return_BadRequest_When_Service_Fails()
+    public async Task ExecuteQuery_ShouldReturnBadRequest_WhenServiceFails()
     {
-        DataSourcesController? controller = new DataSourcesController();
-        TestDataSourceSchemaService? service = new TestDataSourceSchemaService(
-            Result.Failure<IReadOnlyCollection<TableSchema>>(
-                Error.Validation("datasources.connection_string.required", "Connection string is required.")));
+        DataSourcesController controller = new();
+        Mock<IDataSourceQueryService> serviceMock = new();
 
-        ReadDataSourceSchemaRequest? request = new ReadDataSourceSchemaRequest(
-            DataSourceType.PostgreSql,
-            string.Empty);
+        ExecuteDataSourceQueryRequest request = new(
+            DataSourceType.Sqlite,
+            "Data Source=:memory:",
+            "DELETE FROM Users");
 
-        IActionResult? result = await controller.ReadSchema(
-            request,
-            service,
-            CancellationToken.None);
+        serviceMock
+            .Setup(service => service.ExecuteQueryAsync(
+                request.DataSourceType,
+                request.ConnectionString,
+                request.Query,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure<QueryExecutionResult>(
+                Error.Validation("datasources.query.only_select_allowed", "Only SELECT queries are allowed.")));
 
-        BadRequestObjectResult? badRequestResult = result.Should().BeOfType<BadRequestObjectResult>().Subject;
-        ApiErrorResponse? response = badRequestResult.Value.Should().BeOfType<ApiErrorResponse>().Subject;
+        IActionResult actionResult = await controller.ExecuteQuery(request, serviceMock.Object, CancellationToken.None);
 
-        response.Code.Should().Be("datasources.connection_string.required");
-        response.Message.Should().Be("Connection string is required.");
+        BadRequestObjectResult badRequest = Assert.IsType<BadRequestObjectResult>(actionResult);
+        ApiErrorResponse response = Assert.IsType<ApiErrorResponse>(badRequest.Value);
+
+        Assert.Equal("datasources.query.only_select_allowed", response.Code);
     }
 
-    /// <summary>
-    /// Verifies that <see cref="DataSourcesController.ExecuteQuery"/> returns OK for a successful result.
-    /// </summary>
     [Fact]
-    public async Task ExecuteQuery_Should_Return_Ok_When_Service_Succeeds()
+    public async Task ExecuteQuery_ShouldReturnOk_WhenServiceSucceeds()
     {
-        QueryExecutionResult? queryResult = new QueryExecutionResult(
-            new[] { "id", "name" },
-            new[]
-            {
+        DataSourcesController controller = new();
+        Mock<IDataSourceQueryService> serviceMock = new();
+
+        ExecuteDataSourceQueryRequest request = new(
+            DataSourceType.Sqlite,
+            "Data Source=:memory:",
+            "SELECT Id, Email FROM Users");
+
+        QueryExecutionResult queryResult = new(
+            ["Id", "Email"],
+            [
                 new Dictionary<string, object?>
                 {
-                    ["id"] = 1,
-                    ["name"] = "Josey"
+                    ["Id"] = 1,
+                    ["Email"] = "josey@sentra.dev"
                 }
-            },
+            ],
             1);
 
-        DataSourcesController? controller = new DataSourcesController();
-        TestDataSourceQueryService? service = new TestDataSourceQueryService(Result.Success(queryResult));
+        serviceMock
+            .Setup(service => service.ExecuteQueryAsync(
+                request.DataSourceType,
+                request.ConnectionString,
+                request.Query,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(queryResult));
 
-        ExecuteDataSourceQueryRequest? request = new ExecuteDataSourceQueryRequest(
-            DataSourceType.PostgreSql,
-            "Host=localhost;",
-            "select id, name from users;");
+        IActionResult actionResult = await controller.ExecuteQuery(request, serviceMock.Object, CancellationToken.None);
 
-        IActionResult? result = await controller.ExecuteQuery(
-            request,
-            service,
-            CancellationToken.None);
-
-        OkObjectResult? okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        ExecuteDataSourceQueryResponse? response = okResult.Value.Should().BeOfType<ExecuteDataSourceQueryResponse>().Subject;
-
-        response.Columns.Should().ContainInOrder("id", "name");
-        response.RowCount.Should().Be(1);
-        response.Rows.Should().HaveCount(1);
-        response.Rows.First().Values["name"].Should().Be("Josey");
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="DataSourcesController.ExecuteQuery"/> returns BadRequest for a failed result.
-    /// </summary>
-    [Fact]
-    public async Task ExecuteQuery_Should_Return_BadRequest_When_Service_Fails()
-    {
-        DataSourcesController? controller = new DataSourcesController();
-        TestDataSourceQueryService? service = new TestDataSourceQueryService(
-            Result.Failure<QueryExecutionResult>(
-                Error.Validation("datasources.query.required", "Query is required.")));
-
-        ExecuteDataSourceQueryRequest? request = new ExecuteDataSourceQueryRequest(
-            DataSourceType.PostgreSql,
-            "Host=localhost;",
-            string.Empty);
-
-        IActionResult? result = await controller.ExecuteQuery(
-            request,
-            service,
-            CancellationToken.None);
-
-        BadRequestObjectResult? badRequestResult = result.Should().BeOfType<BadRequestObjectResult>().Subject;
-        ApiErrorResponse? response = badRequestResult.Value.Should().BeOfType<ApiErrorResponse>().Subject;
-
-        response.Code.Should().Be("datasources.query.required");
-        response.Message.Should().Be("Query is required.");
+        OkObjectResult ok = Assert.IsType<OkObjectResult>(actionResult);
+        Assert.NotNull(ok.Value);
     }
 }

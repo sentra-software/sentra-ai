@@ -1,5 +1,7 @@
-using FluentAssertions;
-using Sentra.Application.Connectors;
+using Moq;
+using Xunit;
+
+using Sentra.Application.Abstractions.Connectors;
 using Sentra.Application.DataSources;
 using Sentra.Connectors.Abstractions.Connectors;
 using Sentra.Domain.DataSources;
@@ -8,149 +10,289 @@ using Sentra.SharedKernel.Results;
 namespace Sentra.UnitTests.Application.DataSources;
 
 /// <summary>
-/// Contains unit tests for <see cref="DataSourceConnectionService"/>.
+/// Contains tests for <see cref="DataSourceConnectionService"/>.
 /// </summary>
 public sealed class DataSourceConnectionServiceTests
 {
-    /// <summary>
-    /// Verifies that a PostgreSQL data source uses the PostgreSQL connector.
-    /// </summary>
     [Fact]
-    public async Task TestConnectionAsync_Should_Use_PostgreSql_Connector_For_PostgreSql_DataSource()
+    public void Constructor_ShouldThrow_WhenConnectorRegistryIsNull()
     {
-        TestDataConnector? connector = new TestDataConnector(
-            ConnectorType.PostgreSql,
-            ConnectionTestResult.Success("Connection succeeded."));
+        // Act + Assert
+        Assert.Throws<ArgumentNullException>(() => new DataSourceConnectionService(null!));
+    }
 
-        ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        DataSourceConnectionService? service = new DataSourceConnectionService(registry);
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("   ")]
+    [InlineData("\r\n")]
+    [InlineData("\t")]
+    public async Task TestConnectionAsync_ShouldFail_WhenConnectionStringIsNullOrWhitespace(string? connectionString)
+    {
+        // Arrange
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        DataSourceConnectionService service = new(connectorRegistryMock.Object);
 
-        Result<ConnectionTestResult>? result = await service.TestConnectionAsync(
+        // Act
+        Result<ConnectionTestResult> result = await service.TestConnectionAsync(
             DataSourceType.PostgreSql,
-            "Host=localhost;Database=sentra;");
+            connectionString!,
+            CancellationToken.None);
 
-        result.IsSuccess.Should().BeTrue();
-        result.ValueOrThrow().IsSuccess.Should().BeTrue();
-        result.ValueOrThrow().Message.Should().Be("Connection succeeded.");
-        connector.LastConnectionString.Should().Be("Host=localhost;Database=sentra;");
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("datasources.connection_string.required", result.Error.Code);
+
+        connectorRegistryMock.Verify(
+            registry => registry.GetConnector(It.IsAny<ConnectorType>()),
+            Times.Never);
     }
 
-    /// <summary>
-    /// Verifies that the connection string is trimmed before the connector is called.
-    /// </summary>
     [Fact]
-    public async Task TestConnectionAsync_Should_Trim_Connection_String()
+    public async Task TestConnectionAsync_ShouldFail_WhenDataSourceTypeIsInvalidEnumValue()
     {
-        TestDataConnector? connector = new TestDataConnector(
-            ConnectorType.PostgreSql,
-            ConnectionTestResult.Success("OK"));
+        // Arrange
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        DataSourceConnectionService service = new(connectorRegistryMock.Object);
 
-        ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        DataSourceConnectionService? service = new DataSourceConnectionService(registry);
+        DataSourceType invalidType = (DataSourceType)999;
 
-        Result<ConnectionTestResult>? result = await service.TestConnectionAsync(
+        // Act
+        Result<ConnectionTestResult> result = await service.TestConnectionAsync(
+            invalidType,
+            "Host=localhost;Database=sentra;",
+            CancellationToken.None);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("datasources.type.invalid", result.Error.Code);
+
+        connectorRegistryMock.Verify(
+            registry => registry.GetConnector(It.IsAny<ConnectorType>()),
+            Times.Never);
+    }
+
+    [Theory]
+    [InlineData(DataSourceType.PostgreSql, ConnectorType.PostgreSql)]
+    [InlineData(DataSourceType.SqlServer, ConnectorType.SqlServer)]
+    [InlineData(DataSourceType.MySql, ConnectorType.MySql)]
+    [InlineData(DataSourceType.Sqlite, ConnectorType.Sqlite)]
+    public async Task TestConnectionAsync_ShouldResolveExpectedConnectorType(
+        DataSourceType dataSourceType,
+        ConnectorType expectedConnectorType)
+    {
+        // Arrange
+        Mock<IDataConnector> connectorMock = new();
+        connectorMock
+            .SetupGet(connector => connector.Type)
+            .Returns(expectedConnectorType);
+
+        ConnectionTestResult expectedConnectionTestResult =
+            ConnectionTestResult.Success("Connection succeeded.");
+
+        connectorMock
+            .Setup(connector => connector.TestConnectionAsync(
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedConnectionTestResult);
+
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        connectorRegistryMock
+            .Setup(registry => registry.GetConnector(expectedConnectorType))
+            .Returns(Result.Success(connectorMock.Object));
+
+        DataSourceConnectionService service = new(connectorRegistryMock.Object);
+
+        // Act
+        Result<ConnectionTestResult> result = await service.TestConnectionAsync(
+            dataSourceType,
+            "Host=localhost;Database=sentra;",
+            CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Same(expectedConnectionTestResult, result.Value);
+
+        connectorRegistryMock.Verify(
+            registry => registry.GetConnector(expectedConnectorType),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task TestConnectionAsync_ShouldFail_WhenConnectorRegistryReturnsFailure()
+    {
+        // Arrange
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        connectorRegistryMock
+            .Setup(registry => registry.GetConnector(ConnectorType.PostgreSql))
+            .Returns(Result.Failure<IDataConnector>(
+                Error.Failure("connectors.not_registered", "Connector is not registered.")));
+
+        DataSourceConnectionService service = new(connectorRegistryMock.Object);
+
+        // Act
+        Result<ConnectionTestResult> result = await service.TestConnectionAsync(
             DataSourceType.PostgreSql,
-            "  Host=localhost;Database=sentra;  ");
+            "Host=localhost;Database=sentra;",
+            CancellationToken.None);
 
-        result.IsSuccess.Should().BeTrue();
-        connector.LastConnectionString.Should().Be("Host=localhost;Database=sentra;");
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("connectors.not_registered", result.Error.Code);
     }
 
-    /// <summary>
-    /// Verifies that an empty connection string is rejected.
-    /// </summary>
     [Fact]
-    public async Task TestConnectionAsync_Should_Return_Failure_When_Connection_String_Is_Empty()
+    public async Task TestConnectionAsync_ShouldTrimConnectionString_BeforePassingToConnector()
     {
-        TestDataConnector? connector = new TestDataConnector(
-            ConnectorType.PostgreSql,
-            ConnectionTestResult.Success("OK"));
+        // Arrange
+        const string rawConnectionString = "   Host=localhost;Database=sentra;   ";
+        const string trimmedConnectionString = "Host=localhost;Database=sentra;";
 
-        ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        DataSourceConnectionService? service = new DataSourceConnectionService(registry);
+        Mock<IDataConnector> connectorMock = new();
+        connectorMock
+            .SetupGet(connector => connector.Type)
+            .Returns(ConnectorType.PostgreSql);
 
-        Result<ConnectionTestResult>? result = await service.TestConnectionAsync(
+        connectorMock
+            .Setup(connector => connector.TestConnectionAsync(
+                trimmedConnectionString,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ConnectionTestResult.Success("Connection succeeded."));
+
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        connectorRegistryMock
+            .Setup(registry => registry.GetConnector(ConnectorType.PostgreSql))
+            .Returns(Result.Success(connectorMock.Object));
+
+        DataSourceConnectionService service = new(connectorRegistryMock.Object);
+
+        // Act
+        Result<ConnectionTestResult> result = await service.TestConnectionAsync(
             DataSourceType.PostgreSql,
-            " ");
+            rawConnectionString,
+            CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("datasources.connection_string.required");
+        // Assert
+        Assert.True(result.IsSuccess);
+
+        connectorMock.Verify(
+            connector => connector.TestConnectionAsync(
+                trimmedConnectionString,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
-    /// <summary>
-    /// Verifies that an invalid data source type is rejected.
-    /// </summary>
     [Fact]
-    public async Task TestConnectionAsync_Should_Return_Failure_When_DataSourceType_Is_Invalid()
+    public async Task TestConnectionAsync_ShouldPassCancellationToken_ToConnector()
     {
-        TestDataConnector? connector = new TestDataConnector(
-            ConnectorType.PostgreSql,
-            ConnectionTestResult.Success("OK"));
+        // Arrange
+        CancellationToken cancellationToken = new CancellationTokenSource().Token;
 
-        ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        DataSourceConnectionService? service = new DataSourceConnectionService(registry);
+        Mock<IDataConnector> connectorMock = new();
+        connectorMock
+            .SetupGet(connector => connector.Type)
+            .Returns(ConnectorType.PostgreSql);
 
-        Result<ConnectionTestResult>? result = await service.TestConnectionAsync(
-            (DataSourceType)999,
-            "Host=localhost;");
+        connectorMock
+            .Setup(connector => connector.TestConnectionAsync(
+                It.IsAny<string>(),
+                cancellationToken))
+            .ReturnsAsync(ConnectionTestResult.Success("Connection succeeded."));
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("datasources.type.invalid");
-    }
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        connectorRegistryMock
+            .Setup(registry => registry.GetConnector(ConnectorType.PostgreSql))
+            .Returns(Result.Success(connectorMock.Object));
 
-    /// <summary>
-    /// Verifies that a missing connector registration returns a failure.
-    /// </summary>
-    [Fact]
-    public async Task TestConnectionAsync_Should_Return_Failure_When_Connector_Is_Not_Registered()
-    {
-        ConnectorRegistry? registry = new ConnectorRegistry(
-        [
-            new TestDataConnector(
-                ConnectorType.PostgreSql,
-                ConnectionTestResult.Success("OK"))
-        ]);
+        DataSourceConnectionService service = new(connectorRegistryMock.Object);
 
-        DataSourceConnectionService? service = new DataSourceConnectionService(registry);
-
-        Result<ConnectionTestResult>? result = await service.TestConnectionAsync(
-            DataSourceType.MySql,
-            "Server=localhost;");
-
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("connectors.not_registered");
-    }
-
-    /// <summary>
-    /// Verifies that a failed connector connection test is still returned successfully as an executed test result.
-    /// </summary>
-    [Fact]
-    public async Task TestConnectionAsync_Should_Return_Connector_Result_When_Test_Fails()
-    {
-        TestDataConnector? connector = new TestDataConnector(
-            ConnectorType.PostgreSql,
-            ConnectionTestResult.Failure("Connection failed."));
-
-        ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        DataSourceConnectionService? service = new DataSourceConnectionService(registry);
-
-        Result<ConnectionTestResult>? result = await service.TestConnectionAsync(
+        // Act
+        Result<ConnectionTestResult> result = await service.TestConnectionAsync(
             DataSourceType.PostgreSql,
-            "Host=localhost;");
+            "Host=localhost;Database=sentra;",
+            cancellationToken);
 
-        result.IsSuccess.Should().BeTrue();
-        result.ValueOrThrow().IsSuccess.Should().BeFalse();
-        result.ValueOrThrow().Message.Should().Be("Connection failed.");
+        // Assert
+        Assert.True(result.IsSuccess);
+
+        connectorMock.Verify(
+            connector => connector.TestConnectionAsync(
+                It.IsAny<string>(),
+                cancellationToken),
+            Times.Once);
     }
 
-    /// <summary>
-    /// Verifies that the constructor rejects a null connector registry.
-    /// </summary>
     [Fact]
-    public void Constructor_Should_Throw_When_ConnectorRegistry_Is_Null()
+    public async Task TestConnectionAsync_ShouldWrapSuccessfulConnectionTestResult()
     {
-        Func<DataSourceConnectionService>? action = () => new DataSourceConnectionService(null!);
+        // Arrange
+        ConnectionTestResult expectedConnectionTestResult =
+            ConnectionTestResult.Success("Database is reachable.");
 
-        action.Should().Throw<ArgumentNullException>();
+        Mock<IDataConnector> connectorMock = new();
+        connectorMock
+            .SetupGet(connector => connector.Type)
+            .Returns(ConnectorType.PostgreSql);
+
+        connectorMock
+            .Setup(connector => connector.TestConnectionAsync(
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedConnectionTestResult);
+
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        connectorRegistryMock
+            .Setup(registry => registry.GetConnector(ConnectorType.PostgreSql))
+            .Returns(Result.Success(connectorMock.Object));
+
+        DataSourceConnectionService service = new(connectorRegistryMock.Object);
+
+        // Act
+        Result<ConnectionTestResult> result = await service.TestConnectionAsync(
+            DataSourceType.PostgreSql,
+            "Host=localhost;Database=sentra;",
+            CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Same(expectedConnectionTestResult, result.Value);
+    }
+
+    [Fact]
+    public async Task TestConnectionAsync_ShouldReturnFailureResultFromConnector_AsSuccessfulServiceResultPayload()
+    {
+        // Arrange
+        ConnectionTestResult failedConnectionTestResult =
+            ConnectionTestResult.Failure("Could not connect to database.");
+
+        Mock<IDataConnector> connectorMock = new();
+        connectorMock
+            .SetupGet(connector => connector.Type)
+            .Returns(ConnectorType.PostgreSql);
+
+        connectorMock
+            .Setup(connector => connector.TestConnectionAsync(
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(failedConnectionTestResult);
+
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        connectorRegistryMock
+            .Setup(registry => registry.GetConnector(ConnectorType.PostgreSql))
+            .Returns(Result.Success(connectorMock.Object));
+
+        DataSourceConnectionService service = new(connectorRegistryMock.Object);
+
+        // Act
+        Result<ConnectionTestResult> result = await service.TestConnectionAsync(
+            DataSourceType.PostgreSql,
+            "Host=localhost;Database=sentra;",
+            CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Same(failedConnectionTestResult, result.Value);
+        Assert.False(result.Value!.IsSuccess);
     }
 }

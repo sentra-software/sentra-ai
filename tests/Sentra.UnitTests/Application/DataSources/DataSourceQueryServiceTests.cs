@@ -1,5 +1,8 @@
-using FluentAssertions;
-using Sentra.Application.Connectors;
+using Moq;
+using Xunit;
+
+using Sentra.Application.Abstractions.Connectors;
+using Sentra.Application.Abstractions.DataSources;
 using Sentra.Application.DataSources;
 using Sentra.Connectors.Abstractions.Connectors;
 using Sentra.Connectors.Abstractions.Querying;
@@ -9,230 +12,489 @@ using Sentra.SharedKernel.Results;
 namespace Sentra.UnitTests.Application.DataSources;
 
 /// <summary>
-/// Contains unit tests for <see cref="DataSourceQueryService"/>.
+/// Contains tests for <see cref="DataSourceQueryService"/>.
 /// </summary>
 public sealed class DataSourceQueryServiceTests
 {
-    /// <summary>
-    /// Verifies that a PostgreSQL data source uses the PostgreSQL connector and returns query results.
-    /// </summary>
     [Fact]
-    public async Task ExecuteQueryAsync_Should_Use_PostgreSql_Connector_For_PostgreSql_DataSource()
+    public void Constructor_ShouldThrow_WhenConnectorRegistryIsNull()
     {
-        QueryExecutionResult? queryResult = new QueryExecutionResult(
-            new[] { "id", "name" },
-            new[]
-            {
-                new Dictionary<string, object?>
-                {
-                    ["id"] = 1,
-                    ["name"] = "Josey"
-                }
-            },
-            1);
+        // Arrange
+        Mock<IQuerySafetyValidator> querySafetyValidatorMock = new();
 
-        TestQueryDataConnector? connector = new TestQueryDataConnector(
-            ConnectorType.PostgreSql,
-            queryResult);
-
-        ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        TestQuerySafetyValidator? querySafetyValidator = new TestQuerySafetyValidator(Result.Success());
-        DataSourceQueryService? service = new DataSourceQueryService(registry, querySafetyValidator);
-
-        Result<QueryExecutionResult>? result = await service.ExecuteQueryAsync(
-            DataSourceType.PostgreSql,
-            "Host=localhost;Database=sentra;",
-            "select id, name from users;");
-
-        result.IsSuccess.Should().BeTrue();
-        result.ValueOrThrow().RowCount.Should().Be(1);
-        result.ValueOrThrow().Columns.Should().ContainInOrder("id", "name");
-        connector.LastConnectionString.Should().Be("Host=localhost;Database=sentra;");
-        connector.LastQuery.Should().Be("select id, name from users;");
-        querySafetyValidator.LastQuery.Should().Be("select id, name from users;");
+        // Act + Assert
+        Assert.Throws<ArgumentNullException>(() =>
+            new DataSourceQueryService(null!, querySafetyValidatorMock.Object));
     }
 
-    /// <summary>
-    /// Verifies that the connection string and query are trimmed before execution.
-    /// </summary>
     [Fact]
-    public async Task ExecuteQueryAsync_Should_Trim_Connection_String_And_Query()
+    public void Constructor_ShouldThrow_WhenQuerySafetyValidatorIsNull()
     {
-        QueryExecutionResult? queryResult = new QueryExecutionResult(
-            Array.Empty<string>(),
-            Array.Empty<IReadOnlyDictionary<string, object?>>(),
-            0);
+        // Arrange
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
 
-        TestQueryDataConnector? connector = new TestQueryDataConnector(
-            ConnectorType.PostgreSql,
-            queryResult);
-
-        ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        TestQuerySafetyValidator? querySafetyValidator = new TestQuerySafetyValidator(Result.Success());
-        DataSourceQueryService? service = new DataSourceQueryService(registry, querySafetyValidator);
-
-        Result<QueryExecutionResult>? result = await service.ExecuteQueryAsync(
-            DataSourceType.PostgreSql,
-            "  Host=localhost;Database=sentra;  ",
-            "  select 1;  ");
-
-        result.IsSuccess.Should().BeTrue();
-        connector.LastConnectionString.Should().Be("Host=localhost;Database=sentra;");
-        connector.LastQuery.Should().Be("select 1;");
-        querySafetyValidator.LastQuery.Should().Be("  select 1;  ");
+        // Act + Assert
+        Assert.Throws<ArgumentNullException>(() =>
+            new DataSourceQueryService(connectorRegistryMock.Object, null!));
     }
 
-    /// <summary>
-    /// Verifies that an empty connection string is rejected.
-    /// </summary>
-    [Fact]
-    public async Task ExecuteQueryAsync_Should_Return_Failure_When_Connection_String_Is_Empty()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("   ")]
+    [InlineData("\r\n")]
+    [InlineData("\t")]
+    public async Task ExecuteQueryAsync_ShouldFail_WhenConnectionStringIsNullOrWhitespace(string? connectionString)
     {
-        QueryExecutionResult? queryResult = new QueryExecutionResult(
-            Array.Empty<string>(),
-            Array.Empty<IReadOnlyDictionary<string, object?>>(),
-            0);
+        // Arrange
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        Mock<IQuerySafetyValidator> querySafetyValidatorMock = new();
 
-        TestQueryDataConnector? connector = new TestQueryDataConnector(
-            ConnectorType.PostgreSql,
-            queryResult);
+        DataSourceQueryService service = new(
+            connectorRegistryMock.Object,
+            querySafetyValidatorMock.Object);
 
-        ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        TestQuerySafetyValidator? querySafetyValidator = new TestQuerySafetyValidator(Result.Success());
-        DataSourceQueryService? service = new DataSourceQueryService(registry, querySafetyValidator);
-
-        Result<QueryExecutionResult>? result = await service.ExecuteQueryAsync(
+        // Act
+        Result<QueryExecutionResult> result = await service.ExecuteQueryAsync(
             DataSourceType.PostgreSql,
-            " ",
-            "select 1;");
+            connectionString!,
+            "SELECT 1",
+            CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("datasources.connection_string.required");
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("datasources.connection_string.required", result.Error.Code);
+
+        querySafetyValidatorMock.Verify(
+            validator => validator.Validate(It.IsAny<string>()),
+            Times.Never);
+
+        connectorRegistryMock.Verify(
+            registry => registry.GetConnector(It.IsAny<ConnectorType>()),
+            Times.Never);
     }
 
-    /// <summary>
-    /// Verifies that a failed query safety validation is returned.
-    /// </summary>
     [Fact]
-    public async Task ExecuteQueryAsync_Should_Return_Failure_When_Query_Safety_Validation_Fails()
+    public async Task ExecuteQueryAsync_ShouldFail_WhenQuerySafetyValidationFails()
     {
-        QueryExecutionResult? queryResult = new QueryExecutionResult(
-            Array.Empty<string>(),
-            Array.Empty<IReadOnlyDictionary<string, object?>>(),
-            0);
+        // Arrange
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        Mock<IQuerySafetyValidator> querySafetyValidatorMock = new();
 
-        TestQueryDataConnector? connector = new TestQueryDataConnector(
-            ConnectorType.PostgreSql,
-            queryResult);
-
-        ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        TestQuerySafetyValidator? querySafetyValidator = new TestQuerySafetyValidator(
-            Result.Failure(
+        querySafetyValidatorMock
+            .Setup(validator => validator.Validate("DELETE FROM Users"))
+            .Returns(Result.Failure(
                 Error.Validation(
                     "datasources.query.only_select_allowed",
                     "Only SELECT queries are allowed.")));
 
-        DataSourceQueryService? service = new DataSourceQueryService(registry, querySafetyValidator);
+        DataSourceQueryService service = new(
+            connectorRegistryMock.Object,
+            querySafetyValidatorMock.Object);
 
-        Result<QueryExecutionResult>? result = await service.ExecuteQueryAsync(
+        // Act
+        Result<QueryExecutionResult> result = await service.ExecuteQueryAsync(
             DataSourceType.PostgreSql,
-            "Host=localhost;",
-            "delete from \"Companies\";");
+            "Host=localhost;Database=sentra;",
+            "DELETE FROM Users",
+            CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("datasources.query.only_select_allowed");
-        connector.LastQuery.Should().BeNull();
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("datasources.query.only_select_allowed", result.Error.Code);
+
+        connectorRegistryMock.Verify(
+            registry => registry.GetConnector(It.IsAny<ConnectorType>()),
+            Times.Never);
     }
 
-    /// <summary>
-    /// Verifies that an invalid data source type is rejected.
-    /// </summary>
     [Fact]
-    public async Task ExecuteQueryAsync_Should_Return_Failure_When_DataSourceType_Is_Invalid()
+    public async Task ExecuteQueryAsync_ShouldPassOriginalQuery_ToQuerySafetyValidator()
     {
-        QueryExecutionResult? queryResult = new QueryExecutionResult(
-            Array.Empty<string>(),
-            Array.Empty<IReadOnlyDictionary<string, object?>>(),
-            0);
+        // Arrange
+        const string rawQuery = "   SELECT * FROM Users   ";
 
-        TestQueryDataConnector? connector = new TestQueryDataConnector(
-            ConnectorType.PostgreSql,
-            queryResult);
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        Mock<IQuerySafetyValidator> querySafetyValidatorMock = new();
+        Mock<IDataConnector> connectorMock = new();
 
-        ConnectorRegistry? registry = new ConnectorRegistry([connector]);
-        TestQuerySafetyValidator? querySafetyValidator = new TestQuerySafetyValidator(Result.Success());
-        DataSourceQueryService? service = new DataSourceQueryService(registry, querySafetyValidator);
+        querySafetyValidatorMock
+            .Setup(validator => validator.Validate(rawQuery))
+            .Returns(Result.Success());
 
-        Result<QueryExecutionResult>? result = await service.ExecuteQueryAsync(
-            (DataSourceType)999,
-            "Host=localhost;",
-            "select 1;");
+        connectorMock
+            .SetupGet(connector => connector.Type)
+            .Returns(ConnectorType.PostgreSql);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("datasources.type.invalid");
+        QueryExecutionResult executionResult = CreateQueryExecutionResult();
+
+        connectorMock
+            .Setup(connector => connector.ExecuteQueryAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(executionResult);
+
+        connectorRegistryMock
+            .Setup(registry => registry.GetConnector(ConnectorType.PostgreSql))
+            .Returns(Result.Success(connectorMock.Object));
+
+        DataSourceQueryService service = new(
+            connectorRegistryMock.Object,
+            querySafetyValidatorMock.Object);
+
+        // Act
+        Result<QueryExecutionResult> result = await service.ExecuteQueryAsync(
+            DataSourceType.PostgreSql,
+            "Host=localhost;Database=sentra;",
+            rawQuery,
+            CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+
+        querySafetyValidatorMock.Verify(
+            validator => validator.Validate(rawQuery),
+            Times.Once);
     }
 
-    /// <summary>
-    /// Verifies that a missing connector registration returns a failure.
-    /// </summary>
     [Fact]
-    public async Task ExecuteQueryAsync_Should_Return_Failure_When_Connector_Is_Not_Registered()
+    public async Task ExecuteQueryAsync_ShouldFail_WhenDataSourceTypeIsInvalidEnumValue()
     {
-        QueryExecutionResult? queryResult = new QueryExecutionResult(
-            Array.Empty<string>(),
-            Array.Empty<IReadOnlyDictionary<string, object?>>(),
-            0);
+        // Arrange
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        Mock<IQuerySafetyValidator> querySafetyValidatorMock = new();
 
-        ConnectorRegistry? registry = new ConnectorRegistry(
+        querySafetyValidatorMock
+            .Setup(validator => validator.Validate("SELECT 1"))
+            .Returns(Result.Success());
+
+        DataSourceQueryService service = new(
+            connectorRegistryMock.Object,
+            querySafetyValidatorMock.Object);
+
+        DataSourceType invalidType = (DataSourceType)999;
+
+        // Act
+        Result<QueryExecutionResult> result = await service.ExecuteQueryAsync(
+            invalidType,
+            "Host=localhost;Database=sentra;",
+            "SELECT 1",
+            CancellationToken.None);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("datasources.type.invalid", result.Error.Code);
+
+        connectorRegistryMock.Verify(
+            registry => registry.GetConnector(It.IsAny<ConnectorType>()),
+            Times.Never);
+    }
+
+    [Theory]
+    [InlineData(DataSourceType.PostgreSql, ConnectorType.PostgreSql)]
+    [InlineData(DataSourceType.SqlServer, ConnectorType.SqlServer)]
+    [InlineData(DataSourceType.MySql, ConnectorType.MySql)]
+    [InlineData(DataSourceType.Sqlite, ConnectorType.Sqlite)]
+    public async Task ExecuteQueryAsync_ShouldResolveExpectedConnectorType(
+        DataSourceType dataSourceType,
+        ConnectorType expectedConnectorType)
+    {
+        // Arrange
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        Mock<IQuerySafetyValidator> querySafetyValidatorMock = new();
+        Mock<IDataConnector> connectorMock = new();
+
+        querySafetyValidatorMock
+            .Setup(validator => validator.Validate("SELECT 1"))
+            .Returns(Result.Success());
+
+        connectorMock
+            .SetupGet(connector => connector.Type)
+            .Returns(expectedConnectorType);
+
+        QueryExecutionResult executionResult = CreateQueryExecutionResult();
+
+        connectorMock
+            .Setup(connector => connector.ExecuteQueryAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(executionResult);
+
+        connectorRegistryMock
+            .Setup(registry => registry.GetConnector(expectedConnectorType))
+            .Returns(Result.Success(connectorMock.Object));
+
+        DataSourceQueryService service = new(
+            connectorRegistryMock.Object,
+            querySafetyValidatorMock.Object);
+
+        // Act
+        Result<QueryExecutionResult> result = await service.ExecuteQueryAsync(
+            dataSourceType,
+            "Host=localhost;Database=sentra;",
+            "SELECT 1",
+            CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+
+        connectorRegistryMock.Verify(
+            registry => registry.GetConnector(expectedConnectorType),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteQueryAsync_ShouldFail_WhenConnectorRegistryReturnsFailure()
+    {
+        // Arrange
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        Mock<IQuerySafetyValidator> querySafetyValidatorMock = new();
+
+        querySafetyValidatorMock
+            .Setup(validator => validator.Validate("SELECT 1"))
+            .Returns(Result.Success());
+
+        connectorRegistryMock
+            .Setup(registry => registry.GetConnector(ConnectorType.PostgreSql))
+            .Returns(Result.Failure<IDataConnector>(
+                Error.Failure(
+                    "connectors.not_registered",
+                    "Connector is not registered.")));
+
+        DataSourceQueryService service = new(
+            connectorRegistryMock.Object,
+            querySafetyValidatorMock.Object);
+
+        // Act
+        Result<QueryExecutionResult> result = await service.ExecuteQueryAsync(
+            DataSourceType.PostgreSql,
+            "Host=localhost;Database=sentra;",
+            "SELECT 1",
+            CancellationToken.None);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("connectors.not_registered", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task ExecuteQueryAsync_ShouldTrimConnectionString_AndQuery_BeforePassingToConnector()
+    {
+        // Arrange
+        const string rawConnectionString = "   Host=localhost;Database=sentra;   ";
+        const string trimmedConnectionString = "Host=localhost;Database=sentra;";
+        const string rawQuery = "   SELECT * FROM Users   ";
+        const string trimmedQuery = "SELECT * FROM Users";
+
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        Mock<IQuerySafetyValidator> querySafetyValidatorMock = new();
+        Mock<IDataConnector> connectorMock = new();
+
+        querySafetyValidatorMock
+            .Setup(validator => validator.Validate(rawQuery))
+            .Returns(Result.Success());
+
+        connectorMock
+            .SetupGet(connector => connector.Type)
+            .Returns(ConnectorType.PostgreSql);
+
+        QueryExecutionResult executionResult = CreateQueryExecutionResult();
+
+        connectorMock
+            .Setup(connector => connector.ExecuteQueryAsync(
+                trimmedConnectionString,
+                trimmedQuery,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(executionResult);
+
+        connectorRegistryMock
+            .Setup(registry => registry.GetConnector(ConnectorType.PostgreSql))
+            .Returns(Result.Success(connectorMock.Object));
+
+        DataSourceQueryService service = new(
+            connectorRegistryMock.Object,
+            querySafetyValidatorMock.Object);
+
+        // Act
+        Result<QueryExecutionResult> result = await service.ExecuteQueryAsync(
+            DataSourceType.PostgreSql,
+            rawConnectionString,
+            rawQuery,
+            CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+
+        connectorMock.Verify(
+            connector => connector.ExecuteQueryAsync(
+                trimmedConnectionString,
+                trimmedQuery,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteQueryAsync_ShouldPassCancellationToken_ToConnector()
+    {
+        // Arrange
+        CancellationToken cancellationToken = new CancellationTokenSource().Token;
+
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        Mock<IQuerySafetyValidator> querySafetyValidatorMock = new();
+        Mock<IDataConnector> connectorMock = new();
+
+        querySafetyValidatorMock
+            .Setup(validator => validator.Validate("SELECT 1"))
+            .Returns(Result.Success());
+
+        connectorMock
+            .SetupGet(connector => connector.Type)
+            .Returns(ConnectorType.PostgreSql);
+
+        QueryExecutionResult executionResult = CreateQueryExecutionResult();
+
+        connectorMock
+            .Setup(connector => connector.ExecuteQueryAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                cancellationToken))
+            .ReturnsAsync(executionResult);
+
+        connectorRegistryMock
+            .Setup(registry => registry.GetConnector(ConnectorType.PostgreSql))
+            .Returns(Result.Success(connectorMock.Object));
+
+        DataSourceQueryService service = new(
+            connectorRegistryMock.Object,
+            querySafetyValidatorMock.Object);
+
+        // Act
+        Result<QueryExecutionResult> result = await service.ExecuteQueryAsync(
+            DataSourceType.PostgreSql,
+            "Host=localhost;Database=sentra;",
+            "SELECT 1",
+            cancellationToken);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+
+        connectorMock.Verify(
+            connector => connector.ExecuteQueryAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                cancellationToken),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteQueryAsync_ShouldWrapConnectorExecutionResult_InSuccessfulResult()
+    {
+        // Arrange
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        Mock<IQuerySafetyValidator> querySafetyValidatorMock = new();
+        Mock<IDataConnector> connectorMock = new();
+
+        querySafetyValidatorMock
+            .Setup(validator => validator.Validate("SELECT 1"))
+            .Returns(Result.Success());
+
+        connectorMock
+            .SetupGet(connector => connector.Type)
+            .Returns(ConnectorType.PostgreSql);
+
+        QueryExecutionResult expectedExecutionResult = CreateQueryExecutionResult();
+
+        connectorMock
+            .Setup(connector => connector.ExecuteQueryAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedExecutionResult);
+
+        connectorRegistryMock
+            .Setup(registry => registry.GetConnector(ConnectorType.PostgreSql))
+            .Returns(Result.Success(connectorMock.Object));
+
+        DataSourceQueryService service = new(
+            connectorRegistryMock.Object,
+            querySafetyValidatorMock.Object);
+
+        // Act
+        Result<QueryExecutionResult> result = await service.ExecuteQueryAsync(
+            DataSourceType.PostgreSql,
+            "Host=localhost;Database=sentra;",
+            "SELECT 1",
+            CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Same(expectedExecutionResult, result.Value);
+    }
+
+    [Fact]
+    public async Task ExecuteQueryAsync_ShouldReturnSuccessfulServiceResult_EvenWhenConnectorReturnsEmptyRows()
+    {
+        // Arrange
+        Mock<IConnectorRegistry> connectorRegistryMock = new();
+        Mock<IQuerySafetyValidator> querySafetyValidatorMock = new();
+        Mock<IDataConnector> connectorMock = new();
+
+        querySafetyValidatorMock
+            .Setup(validator => validator.Validate("SELECT 1"))
+            .Returns(Result.Success());
+
+        connectorMock
+            .SetupGet(connector => connector.Type)
+            .Returns(ConnectorType.PostgreSql);
+
+        QueryExecutionResult emptyExecutionResult = CreateQueryExecutionResult(
+            columns: ["Id", "Name"],
+            rows: []);
+
+        connectorMock
+            .Setup(connector => connector.ExecuteQueryAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(emptyExecutionResult);
+
+        connectorRegistryMock
+            .Setup(registry => registry.GetConnector(ConnectorType.PostgreSql))
+            .Returns(Result.Success(connectorMock.Object));
+
+        DataSourceQueryService service = new(
+            connectorRegistryMock.Object,
+            querySafetyValidatorMock.Object);
+
+        // Act
+        Result<QueryExecutionResult> result = await service.ExecuteQueryAsync(
+            DataSourceType.PostgreSql,
+            "Host=localhost;Database=sentra;",
+            "SELECT 1",
+            CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Same(emptyExecutionResult, result.Value);
+    }
+
+    private static QueryExecutionResult CreateQueryExecutionResult(
+        IReadOnlyList<string>? columns = null,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>>? rows = null)
+    {
+        columns ??= ["Id", "Name"];
+        rows ??=
         [
-            new TestQueryDataConnector(
-                ConnectorType.PostgreSql,
-                queryResult)
-        ]);
+            new Dictionary<string, object?>
+            {
+                ["Id"] = 1,
+                ["Name"] = "Josey"
+            }
+        ];
 
-        TestQuerySafetyValidator? querySafetyValidator = new TestQuerySafetyValidator(Result.Success());
-        DataSourceQueryService? service = new DataSourceQueryService(registry, querySafetyValidator);
-
-        Result<QueryExecutionResult>? result = await service.ExecuteQueryAsync(
-            DataSourceType.MySql,
-            "Server=localhost;",
-            "select 1;");
-
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("connectors.not_registered");
-    }
-
-    /// <summary>
-    /// Verifies that the constructor rejects a null connector registry.
-    /// </summary>
-    [Fact]
-    public void Constructor_Should_Throw_When_ConnectorRegistry_Is_Null()
-    {
-        TestQuerySafetyValidator? querySafetyValidator = new TestQuerySafetyValidator(Result.Success());
-
-        Func<DataSourceQueryService>? action = () => new DataSourceQueryService(null!, querySafetyValidator);
-
-        action.Should().Throw<ArgumentNullException>();
-    }
-
-    /// <summary>
-    /// Verifies that the constructor rejects a null query safety validator.
-    /// </summary>
-    [Fact]
-    public void Constructor_Should_Throw_When_QuerySafetyValidator_Is_Null()
-    {
-        ConnectorRegistry? registry = new ConnectorRegistry(
-        [
-            new TestQueryDataConnector(
-                ConnectorType.PostgreSql,
-                new QueryExecutionResult(
-                    Array.Empty<string>(),
-                    Array.Empty<IReadOnlyDictionary<string, object?>>(),
-                    0))
-        ]);
-
-        Func<DataSourceQueryService>? action = () => new DataSourceQueryService(registry, null!);
-
-        action.Should().Throw<ArgumentNullException>();
+        return new QueryExecutionResult(columns, rows, 1);
     }
 }
