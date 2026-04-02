@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -27,11 +28,22 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
         _connectionServiceMock = connectionServiceMock;
         _schemaServiceMock = schemaServiceMock;
         _queryServiceMock = queryServiceMock;
+
+        Environment.SetEnvironmentVariable(
+            "ConnectionStrings__SentraPlatform",
+            "Host=localhost;Port=5432;Database=sentra_test;Username=test;Password=test");
+
+        Environment.SetEnvironmentVariable("Jwt__Issuer", "sentra-test");
+        Environment.SetEnvironmentVariable("Jwt__Audience", "sentra-test-audience");
+        Environment.SetEnvironmentVariable("Jwt__SigningKey", "super-secure-test-signing-key-123456789");
+        Environment.SetEnvironmentVariable("Jwt__ExpirationInMinutes", "60");
     }
 
     /// <inheritdoc />
-    protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseEnvironment("Testing");
+
         builder.ConfigureServices(services =>
         {
             if (_connectionServiceMock is not null)
@@ -52,5 +64,17 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
                 services.AddSingleton(_ => _queryServiceMock.Object);
             }
         });
+    }
+
+    /// <inheritdoc />
+    public override async ValueTask DisposeAsync()
+    {
+        Environment.SetEnvironmentVariable("ConnectionStrings__SentraPlatform", null);
+        Environment.SetEnvironmentVariable("Jwt__Issuer", null);
+        Environment.SetEnvironmentVariable("Jwt__Audience", null);
+        Environment.SetEnvironmentVariable("Jwt__SigningKey", null);
+        Environment.SetEnvironmentVariable("Jwt__ExpirationInMinutes", null);
+
+        await base.DisposeAsync();
     }
 }
